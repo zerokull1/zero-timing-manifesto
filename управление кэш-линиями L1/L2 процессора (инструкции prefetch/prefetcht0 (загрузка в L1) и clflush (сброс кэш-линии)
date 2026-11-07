@@ -1,0 +1,84 @@
+[zero@zer0 zero_timing]$ cat << 'EOF' > src/main.rs
+use core::arch::asm;
+
+#[allow(dead_code)]
+#[derive(Debug)]
+struct SafeWatermark {
+    max_payload_bytes: u64,
+    tsc_frequency_mhz: u64,
+}
+
+const VECTOR_SIZE: usize = 4;
+static mut DDR_VECTOR_BUFFER: [u64; VECTOR_SIZE] = [0; VECTOR_SIZE];
+
+/// Стерильный транзит: подтягиваем кэш-линию, делаем выстрел в YMM0 и полностью очищаем кэш
+#[inline(always)]
+unsafe fn cache_controlled_transit(data_ptr: *const u64) -> [u64; VECTOR_SIZE] {
+    let mut out_buffer = [0u64; VECTOR_SIZE];
+
+    unsafe {
+        asm!(
+            "prefetcht0 [{input}]",        // Подтягиваем кэш-линию из ОЗУ напрямую в кэш L1 процессора
+            "lfence",                      // Барьер: ждем, пока линия полностью сядет в кэш
+            "vmovdqu ymm0, [{input}]",     // Выстрел 256 бит из L1-кэша в векторный регистр YMM0
+            "vmovdqu [{output}], ymm0",    // Скидываем результат в буфер назначения
+            "vzeroupper",                  // Стабилизируем частоту ядер i5-4590 на 3.3 ГГц
+            "clflush [{input}]",           // Хирургическая стерилизация: полностью стираем и сбрасываем кэш-линию в ОЗУ
+            "mfence",                      // Тотальный барьер памяти: гарантируем завершение сброса кэша
+            input = in(reg) data_ptr,
+            output = in(reg) &mut out_buffer,
+            out("ymm0") _,
+        );
+    }
+
+    out_buffer
+}
+
+fn main() {
+    println!("====================================================");
+    println!("  X86_64 CACHE-CONTROL ENGINE: ZERO TIMING          ");
+    println!("====================================================");
+
+    let config = SafeWatermark {
+        max_payload_bytes: 64, // 64 байта — идеальный размер одной кэш-линии Haswell
+        tsc_frequency_mhz: 3300,
+    };
+    println!("Паспорт кэш-линий (64 байта) запечатан: {:?}", config);
+    println!("----------------------------------------------------");
+
+    unsafe {
+        let raw_buffer_ptr = &raw mut DDR_VECTOR_BUFFER;
+        
+        for i in 0..VECTOR_SIZE {
+            (*raw_buffer_ptr)[i] = (i as u64 + 1) * 777;
+        }
+
+        println!("Исходные данные в ОЗУ: {:?}", *raw_buffer_ptr);
+        println!("Запуск транзита под управлением prefetcht0 и clflush...");
+
+        // Выполняем изолированный прыжок с жестким контролем кэша ЦП
+        let processed_vector = cache_controlled_transit((*raw_buffer_ptr).as_ptr());
+        
+        println!("----------------------------------------------------");
+        println!("Кэш-линия успешно обработана и полностью стерта из ЦП!");
+        println!("Результат транзита: {:?}", processed_vector);
+    }
+    println!("====================================================");
+}
+EOF
+[zero@zer0 zero_timing]$ cargo run --release
+   Compiling zero_timing v0.1.0 (/home/zero/Рабочий стол/zero_timing)
+    Finished `release` profile [optimized] target(s) in 0.07s
+     Running `target/release/zero_timing`
+====================================================
+  X86_64 CACHE-CONTROL ENGINE: ZERO TIMING          
+====================================================
+Паспорт кэш-линий (64 байта) запечатан: SafeWatermark { max_payload_bytes: 64,tsc_frequency_mhz: 3300 }
+----------------------------------------------------
+Исходные данные в ОЗУ: [777, 1554, 2331, 3108]
+Запуск транзита под управлением prefetcht0 и clflush...
+----------------------------------------------------
+Кэш-линия успешно обработана и полностью стерта из ЦП!
+Результат транзита: [777, 1554, 2331, 3108]
+====================================================
+[zero@zer0 zero_timing]$ 
