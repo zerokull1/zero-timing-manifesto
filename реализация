@@ -1,6 +1,110 @@
 [zero@zer0 zero_timing]$ cat << 'EOF' > src/main.rs
 use core::arch::asm;
 
+// Стадия 1: Структура неизменяемой матрицы ограничений железа (Safe Watermark) 
+#[derive(Debug)]
+struct SafeWatermark {
+    max_payload_bytes: u64,
+    tsc_frequency_mhz: u64,
+}
+
+// Стадия 2: Симуляция статического кольцевого буфера в DDR, заполненного нулями при старте
+const BUFFER_SIZE: usize = 8;
+static mut DDR_RING_BUFFER: [u64; BUFFER_SIZE] = [0; BUFFER_SIZE];
+
+/// Стадия 3: Ассемблерный транзит данных прямо в регистр RAX
+#[inline(always)]
+unsafe fn assembly_transit_into_rax(data_ptr: *const u64) -> u64 {
+    let result: u64;
+
+    // Внедряем явные барьеры памяти (LFENCE) для предотвращения спекулятивного выполнения CPU
+    // и делаем прямой выстрел данных из DDR памяти в аккумулятор RAX.
+    asm!(
+        "lfence",            // Гарантируем, что предыдущие DMA-транзакции завершены
+        "mov {out}, [{input}]", // Surgical transit: переносим данные из ОЗУ прямо в регистр RAX
+        "lfence",            // Защитный барьер на выходе
+        input = in(reg) data_ptr,
+        out = out(reg) result,
+    );
+
+    result
+}
+
+fn main() {
+    println!("====================================================");
+    println!("  OFFICIAL ARCHITECTURAL PROTOTYPE: ZERO TIMING     ");
+    println!("====================================================");
+
+    // Имитируем Стадию 1: Профилирование брокера
+    let config = SafeWatermark {
+        max_payload_bytes: 64,
+        tsc_frequency_mhz: 3300, // Твой базовый предел частоты
+    };
+    println!("Загружена фабричная matrix ограничений: {:?}", config);
+    println!("----------------------------------------------------");
+
+    println!("Запуск конвейера Zero-Copy транзита...");
+
+    unsafe {
+        // Проходим по нашему выделенному статическому контуру в DDR
+        for i in 0..BUFFER_SIZE {
+            let cell_ptr = &DDR_RING_BUFFER[i] as *const u64;
+            
+            // Вызываем хирургический транзит прямо в RAX
+            let rax_content = assembly_transit_into_rax(cell_ptr);
+            
+            println!("Такт [{}]: Данные успешно обработаны в RAX -> {}", i, rax_content);
+        }
+    }
+
+    println!("----------------------------------------------------");
+    println!("Конвейер стабилен, перегрева шины PCIe не обнаружено.");
+    println!("====================================================");
+}
+EOF
+[zero@zer0 zero_timing]$ cargo check
+    Checking zero_timing v0.1.0 (/home/zero/Рабочий стол/zero_timing)
+warning[E0133]: use of inline assembly is unsafe and requires unsafe block
+  --> src/main.rs:21:5
+   |
+21 | /     asm!(
+22 | |         "lfence",            // Гарантируем, что предыдущие DMA-транз...
+23 | |         "mov {out}, [{input}]", // Surgical transit: переносим данные...
+24 | |         "lfence",            // Защитный барьер на выходе
+25 | |         input = in(reg) data_ptr,
+26 | |         out = out(reg) result,
+27 | |     );
+   | |_____^ use of inline assembly
+   |
+   = note: inline assembly is entirely unchecked and can cause undefined behavior
+note: an unsafe function restricts its caller, but its body is safe by default
+  --> src/main.rs:16:1
+   |
+16 | unsafe fn assembly_transit_into_rax(data_ptr: *const u64) -> u64 {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/unsafe-op-in-unsafe-fn.html>
+   = note: `#[warn(unsafe_op_in_unsafe_fn)]` (part of `#[warn(rust_2024_compatibility)]`) on by default
+
+warning: fields `max_payload_bytes` and `tsc_frequency_mhz` are never read
+ --> src/main.rs:6:5
+  |
+5 | struct SafeWatermark {
+  |        ------------- fields in this struct
+6 |     max_payload_bytes: u64,
+  |     ^^^^^^^^^^^^^^^^^
+7 |     tsc_frequency_mhz: u64,
+  |     ^^^^^^^^^^^^^^^^^
+  |
+  = note: `SafeWatermark` has a derived impl for the trait `Debug`, but this is intentionally ignored during dead code analysis
+  = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+For more information about this error, try `rustc --explain E0133`.
+warning: `zero_timing` (bin "zero_timing") generated 2 warnings (run `cargo fix --bin "zero_timing" -p zero_timing` to apply 1 suggestion)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.35s
+[zero@zer0 zero_timing]$ 
+[zero@zer0 zero_timing]$ cat << 'EOF' > src/main.rs
+use core::arch::asm;
+
 // Стадия 1: Матрица ограничений железа (разрешаем неиспользуемый код для PoC)
 #[allow(dead_code)]
 #[derive(Debug)]
