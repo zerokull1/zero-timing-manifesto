@@ -1,0 +1,40 @@
+[zero@zer0 ~]$ # 1. Хирургически удаляем старый одиночный маршрут по умолчанию
+sudo ip route del default
+
+# 2. Взводим двухшлюзовую балансировку трафика 50/50 по обоим интерфейсам
+sudo ip route add default scope global nexthop via 172.19.72.8 dev enp0s20u11 weight 1 nexthop via 192.168.1.1 dev wlp0s20u5 weight 1
+[zero@zer0 ~]$ sudo bash -c 'cat << "EOF" > /usr/local/bin/network-aggregation.sh
+#!/bin/bash
+# Скрипт автоматической агрегации каналов (Кабель + Wi-Fi) с весом 50/50
+
+# Ожидание инициализации DHCP-линков
+sleep 3
+
+# Удаляем дефолтный одиночный шлюз
+ip route del default 2>/dev/null
+
+# Взводим двухшлюзовую Multipath-балансировку на BBR
+ip route add default scope global nexthop via 172.19.72.8 dev enp0s20u11 weight 1 nexthop via 192.168.1.1 dev wlp0s20u5 weight 1
+EOF'
+[sudo] пароль для zero: 
+[zero@zer0 ~]$ sudo chmod +x /usr/local/bin/network-aggregation.sh
+[zero@zer0 ~]$ sudo bash -c 'cat << "EOF" > /etc/systemd/system/network-aggregation.service
+[Unit]
+Description=Multi-Channel Network Link Aggregation Engine (Multipath BBR)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/bin/network-aggregation.sh
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+EOF'
+[zero@zer0 ~]$ sudo systemctl daemon-reload
+sudo systemctl enable --now network-aggregation.service
+Created symlink '/etc/systemd/system/multi-user.target.wants/network-aggregation.service' → '/etc/systemd/system/network-aggregation.service'.
+[zero@zer0 ~]$ 
