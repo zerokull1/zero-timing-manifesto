@@ -7,6 +7,8 @@ const MAX_SERVER_CORES: usize = 128;
 const PCIE_NIC_BAR0_BASE: u64 = 0xFE000000; 
 const NIC_REG_RX_DOORBELL: u64 = 0x1008;
 
+const ATTACK_SIGNATURE_BYTE: u8 = 0xDE;
+
 #[allow(dead_code)]
 #[derive(Copy, Clone)]
 #[repr(align(4096))]
@@ -84,7 +86,6 @@ pub unsafe extern "C" fn _start() -> ! {
             options(nostack)
         );
 
-        // ИСПРАВЛЕНО: Явно используем 32-битный регистр (:e) для исключения задержек Sign Extension
         asm!(
             "mov eax, {id:e}",
             "and rax, 0x7F",        
@@ -107,7 +108,6 @@ pub unsafe extern "C" fn _start() -> ! {
         
         asm!("lfence", options(nostack, nomem));
         
-        // РАЗВЕРТЫВАНИЕ ЦИКЛА (Loop Unrolling): Пакетная обработка для разгона конвейера
         process_server_packet(target_core_storage_ptr);
         process_server_packet(target_core_storage_ptr);
         
@@ -121,17 +121,27 @@ unsafe fn process_server_packet(storage: *mut CoreStorage) {
     if next_index != (*storage).rx_tail {
         let head_ptr = &raw mut (*storage).buffer_matrix[(*storage).rx_head as usize];
         
+        let signature_pattern: u32 = ATTACK_SIGNATURE_BYTE as u32;
+        let mut match_mask: u16;
+
+        // ИСПРАВЛЕНО: Убрали out("xmm0"), так как он физически перекрывается "zmm0"
         asm!(
-            "vpxord zmm0, zmm0, zmm0",       
+            "vmovd xmm0, {sig:e}",          
+            "vpbroadcastb zmm0, xmm0",      
             "vmovdqu64 zmm1, [{input}]",     
             "vpcmpeqb k1, zmm1, zmm0",       
-            "kmovw eax, k1",                 
-            "mov byte ptr [{ptr}], 0x55",   
+            "kmovw {mask:e}, k1",            
+            sig = in(reg) signature_pattern,
             input = in(reg) head_ptr,
-            ptr = in(reg) head_ptr,
-            out("eax") _,
-            options(nostack)
+            mask = out(reg) match_mask,
+            out("zmm0") _, out("zmm1") _, out("k1") _
         );
+
+        if match_mask != 0 {
+            return;
+        }
+
+        *head_ptr = 0x55;
 
         asm!(
             "clflush [{ptr}]",
