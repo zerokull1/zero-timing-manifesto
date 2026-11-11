@@ -38,7 +38,7 @@ int main() {
 
     uint32_t q_cnt = 0;
     vkGetPhysicalDeviceQueueFamilyProperties(gpu, &q_cnt, NULL);
-    VkQueueFamilyProperties qprops[16];
+    VkQueueFamilyProperties qprops[8];
     vkGetPhysicalDeviceQueueFamilyProperties(gpu, &q_cnt, qprops);
     uint32_t q_idx = 0;
     for (uint32_t i = 0; i < q_cnt; i++) {
@@ -77,7 +77,9 @@ int main() {
     vkMapMemory(dev, mem, 0, 4096, 0, &ptr);
     memcpy(ptr, shm_ptr, 2048);
     uint32_t* alert = (uint32_t*)((uint8_t*)ptr + 2048);
+    float* entropy = (float*)((uint8_t*)ptr + 2052);
     *alert = 0;
+    *entropy = 0.0f;
 
     FILE* f = fopen("gpu_offload/shield_iat.spv", "rb");
     if (!f) f = fopen("shield_iat.spv", "rb");
@@ -137,11 +139,16 @@ int main() {
     vkQueueSubmit(queue, 1, &si, VK_NULL_HANDLE);
     vkQueueWaitIdle(queue);
 
-    // Записываем вердикт GPU обратно в общую DDR-страницу для Rust-ядра
+    // Записываем оба вердикта GPU обратно в общую DDR-страницу для Rust-ядра
     *(uint32_t*)((uint8_t*)shm_ptr + 2048) = *alert;
+    *(float*)((uint8_t*)shm_ptr + 2052) = *entropy;
+
+    const char* verdict = (*entropy > 2.5f) ? "HIGH ENTROPY (Dynamic Padding / Hysteria2 Suspected)" : "DETERMINISTIC FLOW (Low IAT Entropy)";
 
     printf("[Rust no_std -> /dev/shm -> Vulkan %s]\n", props.deviceName);
-    printf("  IAT Anomalies Detected by GPU: %u (Expected: 4)\n", *alert);
+    printf("  1. IAT Jitter Spike Alerts: %u (Expected: 4)\n", *alert);
+    printf("  2. Shannon IAT Entropy (H): %.4f bits (Max 4.0000)\n", *entropy);
+    printf("  3. Spectral Shield Verdict: %s\n", verdict);
 
     return 0;
 }

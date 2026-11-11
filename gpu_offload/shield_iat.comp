@@ -4,15 +4,50 @@ layout(local_size_x = 256) in;
 
 layout(std430, binding = 0) buffer IatBuffer {
     uint64_t ring[256];
-    uint alert_flag;
+    uint jitter_alerts;
+    float shannon_entropy;
 };
+
+shared uint hist[16];
+shared float partial_h[16];
 
 void main() {
     uint idx = gl_LocalInvocationID.x;
-    if (idx > 0 && idx < 256) {
-        uint64_t delta = ring[idx] - ring[idx - 1];
+
+    // 1. Очищаем локальную гистограмму в shared-памяти GPU
+    if (idx < 16u) {
+        hist[idx] = 0u;
+        partial_h[idx] = 0.0;
+    }
+    barrier();
+
+    // 2. Каждый поток считает IAT и раскладывает по 16 частотным корзинам
+    if (idx > 0u && idx < 256u) {
+        uint64_t delta = ring[idx] - ring[idx - 1u];
         if (delta > 5000ul || delta < 10ul) {
-            atomicAdd(alert_flag, 1u);
+            atomicAdd(jitter_alerts, 1u);
         }
+        uint bin = uint((delta >> 4) & 15ul);
+        atomicAdd(hist[bin], 1u);
+    }
+    barrier();
+
+    // 3. Первые 16 потоков параллельно считают энтропию Шеннона H = -sum(p * log2(p))
+    if (idx < 16u) {
+        uint count = hist[idx];
+        if (count > 0u) {
+            float p = float(count) / 255.0;
+            partial_h[idx] = -p * log2(p);
+        }
+    }
+    barrier();
+
+    // 4. Поток 0 суммирует энтропию и записывает результат в общую страницу DDR
+    if (idx == 0u) {
+        float total_h = 0.0;
+        for (uint i = 0u; i < 16u; i++) {
+            total_h += partial_h[i];
+        }
+        shannon_entropy = total_h;
     }
 }
