@@ -6,7 +6,7 @@ use core::sync::atomic::{AtomicU64, Ordering};
 
 const MAX_SERVER_CORES: usize = 128;
 const NIC_REG_RX_DOORBELL: u64 = 0x1008;
-const ATTACK_SIGNATURE_BYTE: u8 = 0xDE;
+const ATTACK_SIGNATURE_DWORD: u32 = 0xDEADBEEF; // 4-байтовая сигнатура отсечения в DDR
 
 static DYNAMIC_NIC_BAR0: AtomicU64 = AtomicU64::new(0xFE000000);
 static DYNAMIC_NVME_BAR0: AtomicU64 = AtomicU64::new(0xFD000000);
@@ -44,14 +44,9 @@ static mut SERVER_CORE_MATRIX: [CoreStorage; MAX_SERVER_CORES] = {
 
 const XDP_FLAGS_DRV_MODE: u32 = 1 << 2;
 
-// Жесткая привязка к регистру eax для аппаратных портов 0xCF8 / 0xCFC
 #[inline(always)]
 unsafe fn pci_config_read32(bus: u32, dev: u32, func: u32, offset: u32) -> u32 {
-    let address: u32 = 0x80000000
-        | (bus << 16)
-        | (dev << 11)
-        | (func << 8)
-        | (offset & 0xFC);
+    let address: u32 = 0x80000000 | (bus << 16) | (dev << 11) | (func << 8) | (offset & 0xFC);
     let mut value: u32;
     asm!(
         "mov dx, 0xCF8",
@@ -68,11 +63,7 @@ unsafe fn pci_config_read32(bus: u32, dev: u32, func: u32, offset: u32) -> u32 {
 
 #[inline(always)]
 unsafe fn pci_config_write32(bus: u32, dev: u32, func: u32, offset: u32, value: u32) {
-    let address: u32 = 0x80000000
-        | (bus << 16)
-        | (dev << 11)
-        | (func << 8)
-        | (offset & 0xFC);
+    let address: u32 = 0x80000000 | (bus << 16) | (dev << 11) | (func << 8) | (offset & 0xFC);
     asm!(
         "mov dx, 0xCF8",
         "out dx, eax",
@@ -199,40 +190,46 @@ pub unsafe extern "C" fn _start() -> ! {
 
 #[inline(always)]
 unsafe fn process_server_packet(storage: *mut CoreStorage, nic_bar0: u64, nvme_bar0: u64) {
-    let next_index = ((*storage).rx_head + 1) % 1024;
+    // Выравниваем смещение в буфере строго по 4-байтовой границе (& !3)
+    let aligned_offset = ((*storage).rx_head as usize) & !3;
+    let next_index = (((*storage).rx_head + 4) % 1024);
+    
     if next_index != (*storage).rx_tail {
-        let head_ptr = &raw mut (*storage).buffer_matrix[(*storage).rx_head as usize];
-        
-        let signature_pattern: u32 = ATTACK_SIGNATURE_BYTE as u32;
-        let mut match_mask: u16;
+        let head_ptr = &raw mut (*storage).buffer_matrix[aligned_offset];
+        let mut is_trapped: u32;
 
+        // ФИЛЬТР НА УРОВНЕ DDR (4-БАЙТОВОЕ СЛОВО): Отпускает ЦП без прогона через стек ОС
         asm!(
-            "vmovd xmm0, {sig:e}",          
-            "vpbroadcastb zmm0, xmm0",      
-            "vmovdqu64 zmm1, [{input}]",     
-            "vpcmpeqb k1, zmm1, zmm0",       
-            "kmovw {mask:e}, k1",            
-            sig = in(reg) signature_pattern,
+            "mov eax, [{input}]",          // Читаем выровненное 4-байтовое слово прямо из DDR
+            "cmp eax, {sig:e}",            // Сравниваем с 4-байтовой сигнатурой за 1 такт
+            "sete {trap_flag}",            // Устанавливаем флаг, если пакет попал в фильтр
+            "movzx {res:e}, {trap_flag}",
             input = in(reg) head_ptr,
-            mask = out(reg) match_mask,
-            out("zmm0") _, out("zmm1") _, out("k1") _
+            sig = in(reg) ATTACK_SIGNATURE_DWORD,
+            trap_flag = out(reg_byte) _,
+            res = out(reg) is_trapped,
+            out("eax") _,
+            options(nostack, readonly)
         );
 
-        if match_mask != 0 {
-            let ssd_offload_addr = nvme_bar0 + (((*storage).rx_head as u64) << 3);
+        if is_trapped != 0 {
+            // Сброс в 4-байтовую DDR-ловушку и выгрузка на NVMe SSD в обход кэша ЦП
+            let ssd_offload_addr = nvme_bar0 + (aligned_offset as u64);
             let trap_ptr = &raw mut (*storage).ddr_trap_pad;
             asm!(
-                "movnti [{ssd}], {mask_val}",
+                "movnti [{ssd}], {sig:e}",
                 "prefetchw [{trap}]",
                 ssd = in(reg) ssd_offload_addr,
-                mask_val = in(reg) (match_mask as u64),
+                sig = in(reg) ATTACK_SIGNATURE_DWORD,
                 trap = in(reg) trap_ptr,
                 options(nostack, nomem)
             );
+            (*storage).rx_head = next_index;
             return;
         }
 
-        *head_ptr = 0x55;
+        // Маркируем 4-байтовый блок как чистый
+        *(head_ptr as *mut u32) = 0x55555555;
 
         asm!(
             "clflush [{ptr}]",
