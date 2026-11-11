@@ -10,27 +10,40 @@ pub struct NetworkRingBuffer {
     buffer_matrix: [u8; 2048],
 }
 
+static mut GLOBAL_RING_BUFFER: NetworkRingBuffer = NetworkRingBuffer {
+    tx_head: 0, tx_tail: 0, rx_head: 0, rx_tail: 0,
+    buffer_matrix: [0; 2048],
+};
+
 const XDP_FLAGS_DRV_MODE: u32 = 1 << 2;
 
 #[no_mangle]
 pub unsafe extern "C" fn _start() -> ! {
-    // 1. АППАРАТНЫЙ БАРЬЕР И ЗАХВАТ РЕГИСТРОВ УПРАВЛЕНИЯ CR0/CR4
     asm!(
         "mfence",
-        // Перехват CR0: Чтение -> Сброс 16-го бита (WP) -> Запись обратно
-        "mov rax, cr0",
-        "and rax, 0xFFFFFFFFFFFEFFFF", 
-        "mov cr0, rax",
-        // Перехват CR4: Чтение -> Установка 7-го бита (PGE) -> Запись обратно
-        "mov rax, cr4",
-        "or rax, 0x0000000000000080",
-        "mov cr4, rax",
+        "mov rax, cr0", "and rax, 0xFFFFFFFFFFFEFFFF", "mov cr0, rax",
+        "mov rax, cr4", "or rax, 0x0000000000000080", "mov cr4, rax",
         options(nostack)
     );
     
     let interface_flags = XDP_FLAGS_DRV_MODE;
     asm!("mov edx, {flags:e}", "out dx, al", flags = in(reg) interface_flags, options(nostack));
-    loop { asm!("hlt", options(nostack)); }
+    
+    loop {
+        // Динамически инкрементируем DMA кольцо при обработке входящих пакетов
+        process_next_packet(&mut GLOBAL_RING_BUFFER);
+        asm!("hlt", options(nostack));
+    }
+}
+
+#[inline(always)]
+unsafe fn process_next_packet(ring: &mut NetworkRingBuffer) {
+    // Симулируем аппаратный инкремент указателя RX кольца (размер матрицы ограничен 2048 байтами)
+    let next_index = (ring.rx_head + 1) % 2048;
+    if next_index != ring.rx_tail {
+        ring.buffer_matrix[ring.rx_head as usize] = 0xAA; // Маркер захваченного кадра
+        ring.rx_head = next_index;
+    }
 }
 
 #[no_mangle]
