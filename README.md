@@ -25,7 +25,6 @@ Measured on warmed TLB/L1 pages (`taskset -c 0`) in a `no_std` Linux User-Space 
 | **SMP Matrix Stress (4 Cores, 10M pkts)** | `sys_clone` (`no_std`) + `align(4096)` + `movnti` (Zero False-Sharing) | **0.53 cycles/pkt** | ~0.15 ns |
 
 | **Bare-Metal Ring 0 Shield (UEFI Boot)** | `rdtsc` + `lfence` + `TTL`/`ACK` Norm + `movnti` + `sfence` (QEMU/OVMF) | **27 cycles** | ~7.7 ns |
-
 | **Branchless x86_64 ASM L7 DPI (TLS + HTTP)** | `mov qword` + `cmovne`/`cmova` (Zero-Branch SWAR Payload Inspection) | **36 cycles** | ~10.3 ns |
 | **Phase 1 Clean Fast-Path + GPU IAT** | `read_volatile` + `movnti` + `prefetchw` + `sfence` + GPU Doorbell | **57 cycles** | ~16.3 ns |
 | **Phase 2/3 Bypass Blocked (Active Shield)** | `TTL` Norm + `ACK` Inject + `movnti` (NVMe SIEM + GPU IAT) + Doorbells | **66 cycles** | ~18.9 ns |
