@@ -2,6 +2,7 @@
 #![no_main]
 
 mod tsc;
+mod core_engine;
 
 use core::arch::asm;
 use core::arch::x86_64::{_mm_prefetch, _MM_HINT_T0};
