@@ -2,15 +2,14 @@
 #![no_main]
 use core::arch::asm;
 use core::panic::PanicInfo;
+use core::sync::atomic::{AtomicU64, Ordering};
 
 const MAX_SERVER_CORES: usize = 128;
-const PCIE_NIC_BAR0_BASE: u64 = 0xFE000000; 
 const NIC_REG_RX_DOORBELL: u64 = 0x1008;
-
-// Физический адрес Controller Memory Buffer (CMB) серверного NVMe SSD на шине PCIe
-const NVME_SSD_CMB_BASE: u64 = 0xFD000000;
-
 const ATTACK_SIGNATURE_BYTE: u8 = 0xDE;
+
+static DYNAMIC_NIC_BAR0: AtomicU64 = AtomicU64::new(0xFE000000);
+static DYNAMIC_NVME_BAR0: AtomicU64 = AtomicU64::new(0xFD000000);
 
 #[allow(dead_code)]
 #[derive(Copy, Clone)]
@@ -45,6 +44,79 @@ static mut SERVER_CORE_MATRIX: [CoreStorage; MAX_SERVER_CORES] = {
 
 const XDP_FLAGS_DRV_MODE: u32 = 1 << 2;
 
+// Жесткая привязка к регистру eax для аппаратных портов 0xCF8 / 0xCFC
+#[inline(always)]
+unsafe fn pci_config_read32(bus: u32, dev: u32, func: u32, offset: u32) -> u32 {
+    let address: u32 = 0x80000000
+        | (bus << 16)
+        | (dev << 11)
+        | (func << 8)
+        | (offset & 0xFC);
+    let mut value: u32;
+    asm!(
+        "mov dx, 0xCF8",
+        "out dx, eax",
+        "mov dx, 0xCFC",
+        "in eax, dx",
+        in("eax") address,
+        lateout("eax") value,
+        out("dx") _,
+        options(nostack, nomem)
+    );
+    value
+}
+
+#[inline(always)]
+unsafe fn pci_config_write32(bus: u32, dev: u32, func: u32, offset: u32, value: u32) {
+    let address: u32 = 0x80000000
+        | (bus << 16)
+        | (dev << 11)
+        | (func << 8)
+        | (offset & 0xFC);
+    asm!(
+        "mov dx, 0xCF8",
+        "out dx, eax",
+        "mov dx, 0xCFC",
+        "mov eax, {val:e}",
+        "out dx, eax",
+        in("eax") address,
+        val = in(reg) value,
+        out("dx") _,
+        options(nostack, nomem)
+    );
+}
+
+unsafe fn enumerate_pcie_bus_cold_boot() {
+    let mut bus: u32 = 0;
+    while bus < 16 {
+        let mut dev: u32 = 0;
+        while dev < 32 {
+            let vendor_device = pci_config_read32(bus, dev, 0, 0x00);
+            if (vendor_device & 0xFFFF) != 0xFFFF {
+                let class_rev = pci_config_read32(bus, dev, 0, 0x08);
+                let base_class = (class_rev >> 24) & 0xFF;
+
+                let bar0_low = pci_config_read32(bus, dev, 0, 0x10) & 0xFFFFFFF0;
+                let bar0_high = pci_config_read32(bus, dev, 0, 0x14);
+                let full_bar0 = ((bar0_high as u64) << 32) | (bar0_low as u64);
+
+                if full_bar0 != 0 {
+                    let cmd = pci_config_read32(bus, dev, 0, 0x04);
+                    pci_config_write32(bus, dev, 0, 0x04, cmd | 0x0006);
+
+                    if base_class == 0x02 {
+                        DYNAMIC_NIC_BAR0.store(full_bar0, Ordering::Release);
+                    } else if base_class == 0x01 {
+                        DYNAMIC_NVME_BAR0.store(full_bar0, Ordering::Release);
+                    }
+                }
+            }
+            dev += 1;
+        }
+        bus += 1;
+    }
+}
+
 #[no_mangle]
 pub unsafe extern "C" fn _start() -> ! {
     asm!(
@@ -55,16 +127,7 @@ pub unsafe extern "C" fn _start() -> ! {
         options(nostack)
     );
 
-    asm!(
-        "mov eax, 0x80000004", 
-        "mov dx, 0xCF8",
-        "out dx, eax",
-        "mov dx, 0xCFC",
-        "in eax, dx",
-        "or eax, 0x0006",     
-        "out dx, eax",
-        options(nostack)
-    );
+    enumerate_pcie_bus_cold_boot();
 
     let interface_flags = XDP_FLAGS_DRV_MODE;
     asm!("mov edx, {flags:e}", "out dx, al", flags = in(reg) interface_flags, options(nostack));
@@ -83,6 +146,9 @@ pub unsafe extern "C" fn _start() -> ! {
         core_idx += 1;
     }
     asm!("mfence", options(nostack, nomem));
+
+    let nic_bar0 = DYNAMIC_NIC_BAR0.load(Ordering::Acquire);
+    let nvme_bar0 = DYNAMIC_NVME_BAR0.load(Ordering::Acquire);
 
     loop {
         let mut core_id: u32;
@@ -124,15 +190,15 @@ pub unsafe extern "C" fn _start() -> ! {
         
         asm!("lfence", options(nostack, nomem));
         
-        process_server_packet(target_core_storage_ptr);
-        process_server_packet(target_core_storage_ptr);
+        process_server_packet(target_core_storage_ptr, nic_bar0, nvme_bar0);
+        process_server_packet(target_core_storage_ptr, nic_bar0, nvme_bar0);
         
         asm!("pause", options(nostack, nomem));
     }
 }
 
 #[inline(always)]
-unsafe fn process_server_packet(storage: *mut CoreStorage) {
+unsafe fn process_server_packet(storage: *mut CoreStorage, nic_bar0: u64, nvme_bar0: u64) {
     let next_index = ((*storage).rx_head + 1) % 1024;
     if next_index != (*storage).rx_tail {
         let head_ptr = &raw mut (*storage).buffer_matrix[(*storage).rx_head as usize];
@@ -153,12 +219,11 @@ unsafe fn process_server_packet(storage: *mut CoreStorage) {
         );
 
         if match_mask != 0 {
-            // РАЗГРУЗКА НА NVME SSD: Сбрасываем дамп атаки в память SSD в обход кэша ЦП (movnti)
-            let ssd_offload_addr = NVME_SSD_CMB_BASE + (((*storage).rx_head as u64) << 3);
+            let ssd_offload_addr = nvme_bar0 + (((*storage).rx_head as u64) << 3);
             let trap_ptr = &raw mut (*storage).ddr_trap_pad;
             asm!(
-                "movnti [{ssd}], {mask_val}", // Прямая некэшируемая запись на SSD по PCIe P2P
-                "prefetchw [{trap}]",         // Активируем DDR-ловушку для защиты от спекуляций
+                "movnti [{ssd}], {mask_val}",
+                "prefetchw [{trap}]",
                 ssd = in(reg) ssd_offload_addr,
                 mask_val = in(reg) (match_mask as u64),
                 trap = in(reg) trap_ptr,
@@ -178,7 +243,7 @@ unsafe fn process_server_packet(storage: *mut CoreStorage) {
 
         (*storage).rx_head = next_index;
 
-        let doorbell_addr = PCIE_NIC_BAR0_BASE + NIC_REG_RX_DOORBELL;
+        let doorbell_addr = nic_bar0 + NIC_REG_RX_DOORBELL;
         asm!(
             "mov [{addr}], {val:e}", 
             addr = in(reg) doorbell_addr,
