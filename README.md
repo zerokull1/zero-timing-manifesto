@@ -31,7 +31,7 @@ Designed for high-frequency trading (HFT), inline Deep Packet Inspection (DPI), 
 ## 🛠️ Building from Source
 
 ```bash
-git clone https://github.com
+git clone https://github.com/zerokull1/zero-timing-manifesto
 cd zero-timing-manifesto
 cargo build --release
 ```
