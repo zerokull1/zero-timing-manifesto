@@ -37,6 +37,7 @@ Measured on warmed TLB/L1 pages (`taskset -c 0`) in a `no_std` Linux User-Space 
 │   ├── core_engine.rs   # Per-core matrix, PCIe GPU/NVMe/NIC scan, Active Shield & DMA offload
 │   └── tsc.rs           # Serialized hardware cycle counter (rdtsc / rdtscp + lfence)
 ├── docs/                # Architectural notes, register maps, and deployment guides
+├── gpu_offload/         # Vulkan Compute SPIR-V kernel & Zero-Copy DDR bridge (/dev/shm)
 ├── Cargo.toml           # Package manifest (panic = "abort", LTO enabled)
 ├── LICENSE              # GNU General Public License v3.0 (GPL-3.0)
 └── README.md            # Project overview, benchmarks, and licensing terms
