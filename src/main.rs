@@ -135,7 +135,7 @@ pub extern "C" fn main_entry() -> ! {
     print_str("\n");
     print_str("\n");
     let map_fd = unsafe { af_xdp_engine::open_pinned_xsk_map() };
-    let (xsk_fd, umem_addr, rx_len, rx_verdict) = af_xdp_engine::run_live_xdp_zerocopy_rx(25, map_fd);
+    let (xsk_fd, umem_addr, rx_len, rx_verdict) = af_xdp_engine::run_live_xdp_zerocopy_rx(0, map_fd);
     print_str("  7. AF_XDP Zero-Copy UMEM Subsystem: ");
     if xsk_fd >= 0 {
         print_str("ONLINE (fd=");
