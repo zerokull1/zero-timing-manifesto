@@ -5,6 +5,7 @@ mod tsc;
 mod core_engine;
 mod entropy_cpu;
 mod smp_stress;
+mod l7_shield;
 
 use core::arch::asm;
 use core::panic::PanicInfo;
@@ -125,6 +126,12 @@ pub extern "C" fn main_entry() -> ! {
     print_str(".");
     print_u64(ns_per_pkt % 10);
     print_str(" ns/pkt aggregate)\n");
+    let (l7_cycles, l7_verdict) = l7_shield::benchmark_l7_swar();
+    print_str("  6. Branchless x86_64 ASM L7 DPI (TLS + HTTP): ");
+    print_u64(l7_cycles);
+    print_str(" cycles | Verdict Mask: ");
+    print_hex8(l7_verdict);
+    print_str("\n");
     sys_exit(0);
 }
 
