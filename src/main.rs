@@ -7,6 +7,9 @@ const MAX_SERVER_CORES: usize = 128;
 const PCIE_NIC_BAR0_BASE: u64 = 0xFE000000; 
 const NIC_REG_RX_DOORBELL: u64 = 0x1008;
 
+// Физический адрес Controller Memory Buffer (CMB) серверного NVMe SSD на шине PCIe
+const NVME_SSD_CMB_BASE: u64 = 0xFD000000;
+
 const ATTACK_SIGNATURE_BYTE: u8 = 0xDE;
 
 #[allow(dead_code)]
@@ -81,7 +84,6 @@ pub unsafe extern "C" fn _start() -> ! {
     }
     asm!("mfence", options(nostack, nomem));
 
-    // ZERO-JITTER POLLING КОНТУР
     loop {
         let mut core_id: u32;
         let mut _tmp_rbx: u64;
@@ -125,7 +127,6 @@ pub unsafe extern "C" fn _start() -> ! {
         process_server_packet(target_core_storage_ptr);
         process_server_packet(target_core_storage_ptr);
         
-        // Аппаратная микропауза конвейера: исключает мертвый сон (hlt) и разгружает шину ЦП
         asm!("pause", options(nostack, nomem));
     }
 }
@@ -152,9 +153,14 @@ unsafe fn process_server_packet(storage: *mut CoreStorage) {
         );
 
         if match_mask != 0 {
+            // РАЗГРУЗКА НА NVME SSD: Сбрасываем дамп атаки в память SSD в обход кэша ЦП (movnti)
+            let ssd_offload_addr = NVME_SSD_CMB_BASE + (((*storage).rx_head as u64) << 3);
             let trap_ptr = &raw mut (*storage).ddr_trap_pad;
             asm!(
-                "prefetchw [{trap}]",
+                "movnti [{ssd}], {mask_val}", // Прямая некэшируемая запись на SSD по PCIe P2P
+                "prefetchw [{trap}]",         // Активируем DDR-ловушку для защиты от спекуляций
+                ssd = in(reg) ssd_offload_addr,
+                mask_val = in(reg) (match_mask as u64),
                 trap = in(reg) trap_ptr,
                 options(nostack, nomem)
             );
