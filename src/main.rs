@@ -68,6 +68,20 @@ pub unsafe extern "C" fn _start() -> ! {
 
     let matrix_base_ptr = &raw mut SERVER_CORE_MATRIX;
 
+    // АППАРАТНЫЙ ПРОГРЕВ ШИНЫ DDR: Прогоняем нули по кэш-линиям всех 128 ядер при старте
+    let mut core_idx = 0;
+    while core_idx < MAX_SERVER_CORES {
+        let warm_ptr = &raw mut SERVER_CORE_MATRIX[core_idx].buffer_matrix[0];
+        asm!(
+            "prefetchw [{ptr}]", // Аппаратно заставляем кэш L1/L2 захватить линию на запись
+            "mov byte ptr [{ptr}], 0",
+            ptr = in(reg) warm_ptr,
+            options(nostack, nomem)
+        );
+        core_idx += 1;
+    }
+    asm!("mfence", options(nostack, nomem));
+
     loop {
         let mut core_id: u32;
         let mut _tmp_rbx: u64;
@@ -124,7 +138,6 @@ unsafe fn process_server_packet(storage: *mut CoreStorage) {
         let signature_pattern: u32 = ATTACK_SIGNATURE_BYTE as u32;
         let mut match_mask: u16;
 
-        // ИСПРАВЛЕНО: Убрали out("xmm0"), так как он физически перекрывается "zmm0"
         asm!(
             "vmovd xmm0, {sig:e}",          
             "vpbroadcastb zmm0, xmm0",      
