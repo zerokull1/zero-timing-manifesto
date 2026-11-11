@@ -1,0 +1,3 @@
+# ZERO-TIMING MANIFESTO & STATEFUL INLINE SHIELD — ARCHITECTURE & BENCHMARK REPORT
+# A comprehensive summary of the zero-allocation defense-in-depth pipeline (Stage 0 UEFI to GPU/CPU IAT entropy engine),
+# hardware benchmark results via RDTSCP/LFENCE, and repository deployment commands.
