@@ -52,6 +52,7 @@ make -C gpu_offload && ./gpu_offload/vk_iat_bridge
 │   └── tsc.rs           # Serialized hardware cycle counter (rdtsc / rdtscp + lfence)
 ├── docs/                # Architectural notes, register maps, and deployment guides
 ├── gpu_offload/         # Vulkan Compute SPIR-V kernel & Zero-Copy DDR bridge (/dev/shm)
+├── uefi_stage0/         # Stage 0 bare-metal UEFI bootloader & PCIe BAR0 scanner (27 cycles)
 ├── Cargo.toml           # Package manifest (panic = "abort", LTO enabled)
 ├── LICENSE              # GNU General Public License v3.0 (GPL-3.0)
 └── README.md            # Project overview, benchmarks, and licensing terms
