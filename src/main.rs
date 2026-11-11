@@ -5,15 +5,18 @@ use core::panic::PanicInfo;
 
 const MAX_SERVER_CORES: usize = 128;
 
+// Структура ячейки с аппаратным DDR падингом (Trap Guard) под размер страницы памяти
 #[allow(dead_code)]
 #[derive(Copy, Clone)]
-#[repr(align(64))]
+#[repr(align(4096))] // Выравниваем всю ячейку строго по границе физической страницы памяти
 pub struct CoreStorage {
     tx_head: u32,
     tx_tail: u32,
     rx_head: u32,
     rx_tail: u32,
     buffer_matrix: [u8; 1024],
+    // Мертвая зона отчуждения внутри DDR памяти для перехвата несанкционированного доступа
+    ddr_trap_pad: [u8; 4096], 
 }
 
 static mut SERVER_CORE_MATRIX: [CoreStorage; MAX_SERVER_CORES] = {
@@ -21,12 +24,14 @@ static mut SERVER_CORE_MATRIX: [CoreStorage; MAX_SERVER_CORES] = {
     let mut matrix = [CoreStorage {
         tx_head: 0, tx_tail: 0, rx_head: 0, rx_tail: 0,
         buffer_matrix: [0; 1024],
+        ddr_trap_pad: [0; 4096],
     }; MAX_SERVER_CORES];
     
     while i < MAX_SERVER_CORES {
         matrix[i] = CoreStorage {
             tx_head: 0, tx_tail: 0, rx_head: 0, rx_tail: 0,
             buffer_matrix: [0; 1024],
+            ddr_trap_pad: [0; 4096],
         };
         i += 1;
     }
@@ -88,14 +93,11 @@ unsafe fn process_server_packet(storage: *mut CoreStorage) {
     if next_index != (*storage).rx_tail {
         let head_ptr = &raw mut (*storage).buffer_matrix[(*storage).rx_head as usize];
         
-        // ВЕКТОРНЫЙ ДВИЖОК AVX-512: Мгновенная параллельная обработка 64 байт кадра
         asm!(
-            "vpxord zmm0, zmm0, zmm0",       // Обнуляем векторный регистр zmm0
-            "vmovdqu64 zmm1, [{input}]",     // Загружаем 64 байта сырого трафика в zmm1
-            "vpcmpeqb k1, zmm1, zmm0",       // Сравниваем 64 байта с нулем за 1 такт
-            "kmovw eax, k1",                 // Переносим маску совпадений в регистр общего назначения
-            
-            // Записываем маркер успешной векторной валидации кадра
+            "vpxord zmm0, zmm0, zmm0",       
+            "vmovdqu64 zmm1, [{input}]",     
+            "vpcmpeqb k1, zmm1, zmm0",       
+            "kmovw eax, k1",                 
             "mov byte ptr [{ptr}], 0x55",   
             input = in(reg) head_ptr,
             ptr = in(reg) head_ptr,
@@ -103,7 +105,6 @@ unsafe fn process_server_packet(storage: *mut CoreStorage) {
             options(nostack)
         );
 
-        // NUMA выталкивание кэша для серверных PCI-линков
         asm!(
             "clflush [{ptr}]",
             "sfence",
@@ -117,7 +118,14 @@ unsafe fn process_server_packet(storage: *mut CoreStorage) {
 
 #[no_mangle]
 pub unsafe extern "C" fn handle_vector_14_page_fault() {
-    asm!("pushfq", "push rax", "push rbx", "push rcx", "push rdx", "mov rax, cr2", "mov dword ptr [rax], 0", "pop rdx", "pop rcx", "pop rbx", "pop rax", "popfq", "iretq", options(noreturn));
+    asm!(
+        "pushfq", "push rax", "push rbx", "push rcx", "push rdx", 
+        "mov rax, cr2",  // Читаем из CR2 адрес ОЗУ, на который наступил нарушитель
+        "mov dword ptr [rax], 0", // Гасим сбойный указатель в DDR прямо через физический адрес
+        "pop rdx", "pop rcx", "pop rbx", "pop rax", "popfq", 
+        "iretq", 
+        options(noreturn)
+    );
 }
 
 #[panic_handler]
