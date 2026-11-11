@@ -5,17 +5,20 @@ use core::panic::PanicInfo;
 
 const MAX_SERVER_CORES: usize = 128;
 
-// Структура ячейки с аппаратным DDR падингом (Trap Guard) под размер страницы памяти
+// Базовый адрес MMIO-регистров управления сетевой карты в физическом пространстве
+const PCIE_NIC_BAR0_BASE: u64 = 0xFE000000; 
+// Смещение регистра Doorbell (уведомление карты о наличии новых дескрипторов в кольце)
+const NIC_REG_RX_DOORBELL: u64 = 0x1008;
+
 #[allow(dead_code)]
 #[derive(Copy, Clone)]
-#[repr(align(4096))] // Выравниваем всю ячейку строго по границе физической страницы памяти
+#[repr(align(4096))]
 pub struct CoreStorage {
     tx_head: u32,
     tx_tail: u32,
     rx_head: u32,
     rx_tail: u32,
     buffer_matrix: [u8; 1024],
-    // Мертвая зона отчуждения внутри DDR памяти для перехвата несанкционированного доступа
     ddr_trap_pad: [u8; 4096], 
 }
 
@@ -47,6 +50,20 @@ pub unsafe extern "C" fn _start() -> ! {
         "mfence",
         "mov rax, cr0", "and rax, 0xFFFFFFFFFFFEFFFF", "mov cr0, rax",
         "mov rax, cr4", "or rax, 0x0000000000000080", "mov cr4, rax",
+        options(nostack)
+    );
+
+    // ИНИЦИАЛИЗАЦИЯ ШИННОГО АРБИТРАЖА (PCI EXPRESS BUS MASTER ENABLE)
+    // Конфигурационный порт PCI: 0xCF8 (Address), 0xCFC (Data)
+    // Включаем Bit 2 (Bus Master) и Bit 1 (Memory Space) в командном регистре устройства
+    asm!(
+        "mov eax, 0x80000004", // Пример адресации: Bus 0, Device 0, Function 0, Register 0x04
+        "mov dx, 0xCF8",
+        "out dx, eax",
+        "mov dx, 0xCFC",
+        "in eax, dx",
+        "or eax, 0x0006",     // Выставляем флаги Bus Master и Memory Space Enable
+        "out dx, eax",
         options(nostack)
     );
 
@@ -113,6 +130,15 @@ unsafe fn process_server_packet(storage: *mut CoreStorage) {
         );
 
         (*storage).rx_head = next_index;
+
+        // ШИННЫЙ АРБИТРАЖ: Уведомляем сетевой чип по PCIe шине через MMIO регистр Doorbell
+        let doorbell_addr = PCIE_NIC_BAR0_BASE + NIC_REG_RX_DOORBELL;
+        asm!(
+            "mov [{addr}], {val:e}", // Запись нового индекса головы кольца прямо в порт чипа
+            addr = in(reg) doorbell_addr,
+            val = in(reg) next_index,
+            options(nostack, nomem)
+        );
     }
 }
 
@@ -120,8 +146,8 @@ unsafe fn process_server_packet(storage: *mut CoreStorage) {
 pub unsafe extern "C" fn handle_vector_14_page_fault() {
     asm!(
         "pushfq", "push rax", "push rbx", "push rcx", "push rdx", 
-        "mov rax, cr2",  // Читаем из CR2 адрес ОЗУ, на который наступил нарушитель
-        "mov dword ptr [rax], 0", // Гасим сбойный указатель в DDR прямо через физический адрес
+        "mov rax, cr2",  
+        "mov dword ptr [rax], 0", 
         "pop rdx", "pop rcx", "pop rbx", "pop rax", "popfq", 
         "iretq", 
         options(noreturn)
