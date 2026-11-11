@@ -4,22 +4,19 @@ use core::arch::asm;
 use core::panic::PanicInfo;
 
 const MAX_SERVER_CORES: usize = 128;
-
-// Базовый адрес MMIO-регистров управления сетевой карты в физическом пространстве
 const PCIE_NIC_BAR0_BASE: u64 = 0xFE000000; 
-// Смещение регистра Doorbell (уведомление карты о наличии новых дескрипторов в кольце)
 const NIC_REG_RX_DOORBELL: u64 = 0x1008;
 
 #[allow(dead_code)]
 #[derive(Copy, Clone)]
-#[repr(align(4096))]
+#[repr(align(4096))] // Каждая структура весит ровно 1 страницу памяти (4096 байт)
 pub struct CoreStorage {
     tx_head: u32,
     tx_tail: u32,
     rx_head: u32,
     rx_tail: u32,
     buffer_matrix: [u8; 1024],
-    ddr_trap_pad: [u8; 4096], 
+    ddr_trap_pad: [u8; 3056], // Ювелирно подогнанный падинг: 16+1024+3056 = 4096 байт
 }
 
 static mut SERVER_CORE_MATRIX: [CoreStorage; MAX_SERVER_CORES] = {
@@ -27,14 +24,14 @@ static mut SERVER_CORE_MATRIX: [CoreStorage; MAX_SERVER_CORES] = {
     let mut matrix = [CoreStorage {
         tx_head: 0, tx_tail: 0, rx_head: 0, rx_tail: 0,
         buffer_matrix: [0; 1024],
-        ddr_trap_pad: [0; 4096],
+        ddr_trap_pad: [0; 3056],
     }; MAX_SERVER_CORES];
     
     while i < MAX_SERVER_CORES {
         matrix[i] = CoreStorage {
             tx_head: 0, tx_tail: 0, rx_head: 0, rx_tail: 0,
             buffer_matrix: [0; 1024],
-            ddr_trap_pad: [0; 4096],
+            ddr_trap_pad: [0; 3056],
         };
         i += 1;
     }
@@ -53,16 +50,13 @@ pub unsafe extern "C" fn _start() -> ! {
         options(nostack)
     );
 
-    // ИНИЦИАЛИЗАЦИЯ ШИННОГО АРБИТРАЖА (PCI EXPRESS BUS MASTER ENABLE)
-    // Конфигурационный порт PCI: 0xCF8 (Address), 0xCFC (Data)
-    // Включаем Bit 2 (Bus Master) и Bit 1 (Memory Space) в командном регистре устройства
     asm!(
-        "mov eax, 0x80000004", // Пример адресации: Bus 0, Device 0, Function 0, Register 0x04
+        "mov eax, 0x80000004", 
         "mov dx, 0xCF8",
         "out dx, eax",
         "mov dx, 0xCFC",
         "in eax, dx",
-        "or eax, 0x0006",     // Выставляем флаги Bus Master и Memory Space Enable
+        "or eax, 0x0006",     
         "out dx, eax",
         options(nostack)
     );
@@ -70,9 +64,13 @@ pub unsafe extern "C" fn _start() -> ! {
     let interface_flags = XDP_FLAGS_DRV_MODE;
     asm!("mov edx, {flags:e}", "out dx, al", flags = in(reg) interface_flags, options(nostack));
 
+    // Фиксируем базовый физический адрес нашей матрицы в памяти
+    let matrix_base_ptr = &raw mut SERVER_CORE_MATRIX;
+
     loop {
         let mut core_id: u32;
         let mut _tmp_rbx: u64;
+        let mut target_core_storage_ptr: *mut CoreStorage;
         
         asm!(
             "mov {tmp}, rbx",
@@ -87,9 +85,20 @@ pub unsafe extern "C" fn _start() -> ! {
             options(nostack)
         );
 
-        let core_index = (core_id as usize) % MAX_SERVER_CORES;
-        let next_core_index = (core_index + 1) % MAX_SERVER_CORES;
-        
+        // БЕЗНАГРУЗОЧНАЯ DDR-ЛОКАЛИЗАЦИЯ: Бинарный сдвиг вместо MSR-регистров
+        asm!(
+            "mov rax, {id}",
+            "and rax, 0x7F",        // Ограничиваем индекс маской до 127 (MAX_SERVER_CORES)
+            "shl rax, 12",          // Умножаем APIC ID на 4096 (размер страницы) за 1 такт!
+            "add rax, {base}",      // Добавляем к базовому адресу матрицы
+            "mov {out_ptr}, rax",   // Получаем готовый прямой указатель на память текущего ядра
+            id = in(reg) core_id,
+            base = in(reg) matrix_base_ptr,
+            out_ptr = out(reg) target_core_storage_ptr,
+            out("rax") _
+        );
+
+        let next_core_index = ((core_id as usize) + 1) % MAX_SERVER_CORES;
         let next_storage_ptr = &raw mut SERVER_CORE_MATRIX[next_core_index];
         asm!(
             "prefetcht0 [{ptr}]",
@@ -99,7 +108,7 @@ pub unsafe extern "C" fn _start() -> ! {
         
         asm!("lfence", options(nostack, nomem));
         
-        process_server_packet(&raw mut SERVER_CORE_MATRIX[core_index]);
+        process_server_packet(target_core_storage_ptr);
         asm!("hlt", options(nostack));
     }
 }
@@ -131,10 +140,9 @@ unsafe fn process_server_packet(storage: *mut CoreStorage) {
 
         (*storage).rx_head = next_index;
 
-        // ШИННЫЙ АРБИТРАЖ: Уведомляем сетевой чип по PCIe шине через MMIO регистр Doorbell
         let doorbell_addr = PCIE_NIC_BAR0_BASE + NIC_REG_RX_DOORBELL;
         asm!(
-            "mov [{addr}], {val:e}", // Запись нового индекса головы кольца прямо в порт чипа
+            "mov [{addr}], {val:e}", 
             addr = in(reg) doorbell_addr,
             val = in(reg) next_index,
             options(nostack, nomem)
@@ -148,7 +156,7 @@ pub unsafe extern "C" fn handle_vector_14_page_fault() {
         "pushfq", "push rax", "push rbx", "push rcx", "push rdx", 
         "mov rax, cr2",  
         "mov dword ptr [rax], 0", 
-        "pop rdx", "pop rcx", "pop rbx", "pop rax", "popfq", 
+        "pop rdx", "push rcx", "pop rbx", "pop rax", "popfq", 
         "iretq", 
         options(noreturn)
     );
