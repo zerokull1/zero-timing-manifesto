@@ -26,6 +26,19 @@ Measured on warmed TLB/L1 pages (`taskset -c 0`) in a `no_std` Linux User-Space 
 | **Phase 2/3 Bypass Blocked (Active Shield)** | `TTL` Norm + `ACK` Inject + `movnti` (NVMe SIEM + GPU IAT) + Doorbells | **66 cycles** | ~18.9 ns |
 | **L1 Cache-Line Read (Baseline)** | `#[repr(align(64))]` + `prefetcht0` | **69 cycles** | ~19.7 ns |
 
+### 🔬 Spectral IAT Entropy Benchmarks (Vulkan Compute GPU Offload)
+
+Measured on NVIDIA GeForce GTX 1050 (`shaderInt64` + 16-bin `shared` memory histogram) reading directly from `/dev/shm/zero_shield_ring`:
+
+| Traffic Profile | Threshold Jitter Alerts | Shannon IAT Entropy ($H$) | GPU Shield Verdict |
+| :--- | :---: | :---: | :--- |
+| **Deterministic Flow (Phase 1)** | `0` (or isolated spikes) | **0.1165 bits** | `DETERMINISTIC FLOW` |
+| **Dynamic Padding / Hysteria2** | `0` (evades threshold) | **3.9566 bits** | `HIGH ENTROPY (Suspected)` |
+
+```bash
+make -C gpu_offload && ./gpu_offload/vk_iat_bridge
+```
+
 ---
 
 ## 📂 Repository Structure
