@@ -26,14 +26,25 @@ int main() {
 
     VkPhysicalDevice gpu = VK_NULL_HANDLE;
     VkPhysicalDeviceProperties props;
+    VkPhysicalDevice fallback_cpu = VK_NULL_HANDLE;
+    VkPhysicalDeviceProperties fallback_props;
     for (uint32_t i = 0; i < gpu_cnt; i++) {
         VkPhysicalDeviceFeatures feats;
         vkGetPhysicalDeviceFeatures(gpus[i], &feats);
         vkGetPhysicalDeviceProperties(gpus[i], &props);
-        if (feats.shaderInt64 && props.deviceType != VK_PHYSICAL_DEVICE_TYPE_CPU) {
-            gpu = gpus[i];
-            break;
+        if (feats.shaderInt64) {
+            if (props.deviceType != VK_PHYSICAL_DEVICE_TYPE_CPU) {
+                gpu = gpus[i];
+                break;
+            } else if (fallback_cpu == VK_NULL_HANDLE) {
+                fallback_cpu = gpus[i];
+                fallback_props = props;
+            }
         }
+    }
+    if (gpu == VK_NULL_HANDLE && fallback_cpu != VK_NULL_HANDLE) {
+        gpu = fallback_cpu;
+        props = fallback_props;
     }
 
     uint32_t q_cnt = 0;
