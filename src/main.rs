@@ -6,6 +6,7 @@ mod core_engine;
 mod entropy_cpu;
 mod smp_stress;
 mod l7_shield;
+mod af_xdp_engine;
 
 use core::arch::asm;
 use core::panic::PanicInfo;
@@ -132,6 +133,30 @@ pub extern "C" fn main_entry() -> ! {
     print_str(" cycles | Verdict Mask: ");
     print_hex8(l7_verdict);
     print_str("\n");
+    print_str("\n");
+    let (xsk_fd, umem_addr) = af_xdp_engine::verify_af_xdp_subsystem(9);
+    print_str("  7. AF_XDP Zero-Copy UMEM Subsystem: ");
+    if xsk_fd >= 0 {
+        print_str("ONLINE (fd=");
+        print_u64(xsk_fd as u64);
+        print_str(", UMEM=256KB @ 0x");
+        let mut shift = 56i32;
+        while shift >= 0 {
+            let b = ((umem_addr as u64 >> shift) & 0xFF) as u8;
+            let hi = b >> 4;
+            let lo = b & 0x0F;
+            let c1 = if hi < 10 { b'0' + hi } else { b'A' + (hi - 10) };
+            let c2 = if lo < 10 { b'0' + lo } else { b'A' + (lo - 10) };
+            let pair = [c1, c2];
+            sys_write(1, pair.as_ptr(), 2);
+            shift -= 8;
+        }
+        print_str(")\n");
+    } else {
+        print_str("ERR=");
+        print_u64((-xsk_fd) as u64);
+        print_str("\n");
+    }
     sys_exit(0);
 }
 

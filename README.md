@@ -49,6 +49,7 @@ make -C gpu_offload && ./gpu_offload/vk_iat_bridge
 ```text
 ├── .cargo/              # Compiler flags and bare-metal target settings
 ├── src/
+│   ├── af_xdp_engine.rs # Zero-copy AF_XDP socket & 256KB UMEM ring registration (no_std)
 │   ├── main.rs          # Entry point, direct Linux syscalls, and benchmark runner
 │   ├── core_engine.rs   # Per-core matrix, PCIe GPU/NVMe/NIC scan, Active Shield & DMA offload
 │   ├── entropy_cpu.rs   # Zero-FPU Q16.16 integer Shannon entropy worker for GPU-less 1U racks
@@ -57,6 +58,7 @@ make -C gpu_offload && ./gpu_offload/vk_iat_bridge
 │   └── tsc.rs           # Serialized hardware cycle counter (rdtsc / rdtscp + lfence)
 ├── docs/                # Architectural notes, register maps, and deployment guides
 ├── gpu_offload/         # Vulkan Compute SPIR-V kernel & Zero-Copy DDR bridge (/dev/shm)
+├── xdp_shield/          # Native Linux kernel XDP L3/L4/L7 SWAR filter & XSKMAP redirect
 ├── uefi_stage0/         # Stage 0 UEFI bootloader, PCIe scanner & Anti-Morse MSR Power Lock (0x199)
 ├── Cargo.toml           # Package manifest (panic = "abort", LTO enabled)
 ├── LICENSE              # GNU General Public License v3.0 (GPL-3.0)
