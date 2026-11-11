@@ -30,19 +30,30 @@ pub unsafe extern "C" fn _start() -> ! {
     asm!("mov edx, {flags:e}", "out dx, al", flags = in(reg) interface_flags, options(nostack));
     
     loop {
-        // Динамически инкрементируем DMA кольцо при обработке входящих пакетов
-        process_next_packet(&mut GLOBAL_RING_BUFFER);
+        // Передаем сырой указатель (Raw Pointer) вместо опасной ссылки
+        process_next_packet(&raw mut GLOBAL_RING_BUFFER);
         asm!("hlt", options(nostack));
     }
 }
 
 #[inline(always)]
-unsafe fn process_next_packet(ring: &mut NetworkRingBuffer) {
-    // Симулируем аппаратный инкремент указателя RX кольца (размер матрицы ограничен 2048 байтами)
-    let next_index = (ring.rx_head + 1) % 2048;
-    if next_index != ring.rx_tail {
-        ring.buffer_matrix[ring.rx_head as usize] = 0xAA; // Маркер захваченного кадра
-        ring.rx_head = next_index;
+unsafe fn process_next_packet(ring: *mut NetworkRingBuffer) {
+    let next_index = ((*ring).rx_head + 1) % 2048;
+    if next_index != (*ring).rx_tail {
+        let head_ptr = &raw mut (*ring).buffer_matrix[(*ring).rx_head as usize];
+        
+        // Пишем маркер захваченного кадра прямо в память
+        *head_ptr = 0xAA;
+        
+        // 3. АППАРАТНЫЙ СБРОС КЭШ-ЛИНИИ И БАРЬЕР ДЛЯ ПОЛНОЙ СТЕРЕЛИЗАЦИИ ШИНЫ DDR
+        asm!(
+            "clflush [{ptr}]", // Выталкиваем кэш-линию Haswell в ОЗУ
+            "sfence",          // Жесткий барьер записи для PCI-контроллера
+            ptr = in(reg) head_ptr,
+            options(nostack, nomem)
+        );
+        
+        (*ring).rx_head = next_index;
     }
 }
 
