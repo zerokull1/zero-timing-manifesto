@@ -4,6 +4,7 @@
 mod tsc;
 mod core_engine;
 mod entropy_cpu;
+mod smp_stress;
 
 use core::arch::asm;
 use core::panic::PanicInfo;
@@ -113,6 +114,17 @@ pub extern "C" fn main_entry() -> ! {
         }
     }
 
+    let (total_pkts, smp_cycles) = smp_stress::run_smp_matrix_stress(4);
+    print_str("  5. SMP Matrix Stress (4 Cores, Zero False-Sharing): ");
+    print_u64(total_pkts);
+    print_str(" pkts in ");
+    print_u64(smp_cycles);
+    print_str(" cycles (~");
+    let ns_per_pkt = if total_pkts > 0 { (smp_cycles * 100) / (total_pkts * 35) } else { 0 };
+    print_u64(ns_per_pkt / 10);
+    print_str(".");
+    print_u64(ns_per_pkt % 10);
+    print_str(" ns/pkt aggregate)\n");
     sys_exit(0);
 }
 
