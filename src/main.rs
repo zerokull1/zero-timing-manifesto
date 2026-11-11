@@ -68,12 +68,11 @@ pub unsafe extern "C" fn _start() -> ! {
 
     let matrix_base_ptr = &raw mut SERVER_CORE_MATRIX;
 
-    // АППАРАТНЫЙ ПРОГРЕВ ШИНЫ DDR: Прогоняем нули по кэш-линиям всех 128 ядер при старте
     let mut core_idx = 0;
     while core_idx < MAX_SERVER_CORES {
-        let warm_ptr = &raw mut SERVER_CORE_MATRIX[core_idx].buffer_matrix[0];
+        let warm_ptr = &raw mut SERVER_CORE_MATRIX[core_idx].buffer_matrix;
         asm!(
-            "prefetchw [{ptr}]", // Аппаратно заставляем кэш L1/L2 захватить линию на запись
+            "prefetchw [{ptr}]", 
             "mov byte ptr [{ptr}], 0",
             ptr = in(reg) warm_ptr,
             options(nostack, nomem)
@@ -150,7 +149,15 @@ unsafe fn process_server_packet(storage: *mut CoreStorage) {
             out("zmm0") _, out("zmm1") _, out("k1") _
         );
 
+        // ЛОВУШКА ДЛЯ СПЕКУЛЯТИВНОГО КОНВЕЙЕРА (DDR TRAP GUARD)
         if match_mask != 0 {
+            // Если атака обнаружена, принудительно направляем указатель в мертвую зону ddr_trap_pad текущего ядра
+            let trap_ptr = &raw mut (*storage).ddr_trap_pad;
+            asm!(
+                "mov rax, [{trap}]", // Чтение из ловушки активирует аппаратный Vector 14 при спекуляции
+                trap = in(reg) trap_ptr,
+                out("rax") _
+            );
             return;
         }
 
@@ -180,7 +187,7 @@ pub unsafe extern "C" fn handle_vector_14_page_fault() {
     asm!(
         "pushfq", "push rax", "push rbx", "push rcx", "push rdx", 
         "mov rax, cr2",  
-        "mov dword ptr [rax], 0", 
+        "mov dword ptr [rax], 0", // 1 импульс гасит сбойный/спекулятивный поток нарушителя в ОЗУ
         "pop rdx", "push rcx", "pop rbx", "pop rax", "popfq", 
         "iretq", 
         options(noreturn)
