@@ -50,7 +50,7 @@ pub unsafe extern "C" fn _start() -> ! {
 
     loop {
         let mut core_id: u32;
-        let mut _tmp_rbx: u64; // Добавили нижнее подчеркивание для подавления ворнингов
+        let mut _tmp_rbx: u64;
         
         asm!(
             "mov {tmp}, rbx",
@@ -66,8 +66,16 @@ pub unsafe extern "C" fn _start() -> ! {
         );
 
         let core_index = (core_id as usize) % MAX_SERVER_CORES;
+        let next_core_index = (core_index + 1) % MAX_SERVER_CORES;
         
-        // Аппаратный барьер чтения для NUMA-архитектур
+        // ПРЕДИКТИВНЫЙ ПРОГРЕВ: Заранее затягиваем ячейку памяти следующего ядра в L1-кэш
+        let next_storage_ptr = &raw mut SERVER_CORE_MATRIX[next_core_index];
+        asm!(
+            "prefetcht0 [{ptr}]",
+            ptr = in(reg) next_storage_ptr,
+            options(nostack, nomem)
+        );
+        
         asm!("lfence", options(nostack, nomem));
         
         process_server_packet(&raw mut SERVER_CORE_MATRIX[core_index]);
