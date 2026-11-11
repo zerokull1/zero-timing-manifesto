@@ -1,0 +1,37 @@
+name: Zero-Timing & GPU Shield CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-and-verify:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Vulkan SDK, glslc, and Mesa Lavapipe (CPU Vulkan fallback)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libvulkan-dev glslang-tools glslc mesa-vulkan-drivers
+
+      - name: Build no_std Rust Core (Release + LTO)
+        run: |
+          cargo build --release
+          ldd ./target/release/zero_project | grep -E "statically linked|not a dynamic executable"
+
+      - name: Run Rust Core Benchmark & Populate /dev/shm Ring
+        run: |
+          ./target/release/zero_project
+
+      - name: Build & Run Vulkan Compute Entropy Engine (Lavapipe)
+        run: |
+          make -C gpu_offload
+          ./gpu_offload/vk_iat_bridge
