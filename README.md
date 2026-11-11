@@ -2,42 +2,58 @@
 
 **Deterministic, ultra-low-latency `no_std` Rust core and x86_64 bare-metal architectural blueprint.**
 
-Designed for high-frequency trading (HFT), inline Deep Packet Inspection (DPI), Web Application Firewalls (WAF), and custom low-level firmware.
+Designed for high-frequency trading (HFT), inline Deep Packet Inspection (DPI), Web Application Firewalls (WAF), and server-rack kernel-bypass infrastructure.
 
 ---
 
 ## ⚡ Core Architectural Pillars
 
 * **Zero-Dependency `no_std` Execution:** Built without standard library or OS runtime overhead (`-nostartfiles`, `-nodefaultlibs`).
-* **Cache-Line Sterile Memory Layout:** Strict `#[repr(align(64))]` data alignment paired with hardware prefetching.
-* **Direct x86_64 Hardware Control:** Low-level manipulation of control registers (`CR0`, `CR3`, `CR4`), GDT transitions, and hidden segments.
+* **DDR Memory Traps & NVMe DMA Offload:** 4-byte signature filtering (`0xDEADBEEF`) directly in DDR with non-temporal `movnti` writes to NVMe DMA pages, bypassing CPU caches.
+* **Cache-Line Sterile Memory Layout:** Strict `#[repr(C, align(4096))]` per-core matrices and 64-byte cache-line alignment paired with hardware prefetching (`prefetcht0`/`prefetchw`).
+* **Direct x86_64 Hardware Control:** Low-level manipulation of control registers (`CR0`, `CR3`, `CR4`), PCIe BAR0 enumeration, GDT transitions, and custom `#PF` (`iretq`) handlers.
 * **SIMD & Vectorized Fast-Paths:** Utilizing 256-bit AVX registers for zero-copy packet inspection.
-* **Privilege Ring & Pre-OS Exploration:** Stage-0 UEFI initialization, Ring 0 execution, SMM (Ring -2), and core pinning.
+
+---
+
+## 📊 Hardware Cycle Benchmarks (`rdtscp` + `lfence`)
+
+Measured on warmed TLB/L1 pages in a `no_std` Linux User-Space simulation:
+
+| Execution Path | Low-Level Operations | Latency (CPU Cycles) | Approx. Time (@ 3.5 GHz) |
+| :--- | :--- | :---: | :---: |
+| **L1 Cache-Line Read** | `#[repr(align(64))]` + `prefetcht0` | **69 cycles** | ~19.7 ns |
+| **DDR Trap + NVMe Offload** | `cmp 0xDEADBEEF` + `movnti` + `sfence` + Doorbell | **75 cycles** | ~21.4 ns |
+| **Clean Packet Fast-Path** | `write_volatile` + `clflush` + `sfence` + Doorbell | **93 cycles** | ~26.5 ns |
 
 ---
 
 ## 📂 Repository Structure
 
 ```text
-├── .cargo/          # Compiler flags and bare-metal target settings
-├── src/             # Core Rust source code and inline assembly
-├── docs/            # Architectural notes and deployment guides
-├── Cargo.toml       # Package manifest (panic = "abort", LTO enabled)
-├── LICENSE          # GNU General Public License v3.0 (GPL-3.0)
-└── README.md        # Project overview and licensing terms
+├── .cargo/              # Compiler flags and bare-metal target settings
+├── src/
+│   ├── main.rs          # Entry point, direct Linux syscalls, and benchmark runner
+│   ├── core_engine.rs   # Per-core matrix, PCIe BAR0, DDR trap, and NVMe DMA offload
+│   └── tsc.rs           # Serialized hardware cycle counter (rdtsc / rdtscp + lfence)
+├── docs/                # Architectural notes, register maps, and deployment guides
+├── Cargo.toml           # Package manifest (panic = "abort", LTO enabled)
+├── LICENSE              # GNU General Public License v3.0 (GPL-3.0)
+└── README.md            # Project overview, benchmarks, and licensing terms
 ```
 
 ---
 
-## 🛠️ Building from Source
+## 🛠️ Building & Running Benchmarks
 
 ```bash
-git clone https://github.com
+git clone https://github.com/zerokull1/zero-timing-manifesto.git
 cd zero-timing-manifesto
 cargo build --release
+./target/release/zero_project
 ```
 
-> **Note:** Instructions targeting Ring 0 require bare-metal or kernel-space execution and will trigger a General Protection Fault (`#GP`) in standard Linux User Space.
+> **Note:** Bare-metal Ring 0 routines (`run_bare_metal_loop`, `CR0`/`CR4` writes, `cli`, PCIe `0xCF8`/`0xCFC` I/O) require kernel-space or UEFI execution and will trigger a General Protection Fault (`#GP`) in standard Linux User Space.
 
 ---
 
