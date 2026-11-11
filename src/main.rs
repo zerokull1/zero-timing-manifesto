@@ -134,7 +134,8 @@ pub extern "C" fn main_entry() -> ! {
     print_hex8(l7_verdict);
     print_str("\n");
     print_str("\n");
-    let (xsk_fd, umem_addr) = af_xdp_engine::verify_af_xdp_subsystem(9);
+    let map_fd = unsafe { af_xdp_engine::open_pinned_xsk_map() };
+    let (xsk_fd, umem_addr, rx_len, rx_verdict) = af_xdp_engine::run_live_xdp_zerocopy_rx(25, map_fd);
     print_str("  7. AF_XDP Zero-Copy UMEM Subsystem: ");
     if xsk_fd >= 0 {
         print_str("ONLINE (fd=");
@@ -151,7 +152,7 @@ pub extern "C" fn main_entry() -> ! {
             sys_write(1, pair.as_ptr(), 2);
             shift -= 8;
         }
-        print_str(")\n");
+        print_str(", RX_LEN="); print_u64(rx_len as u64); print_str(", ASM_L7_VERDICT="); print_hex8(rx_verdict); print_str(")\n");
     } else {
         print_str("ERR=");
         print_u64((-xsk_fd) as u64);

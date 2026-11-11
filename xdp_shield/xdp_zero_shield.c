@@ -75,3 +75,8 @@ int xdp_zero_shield_prog(struct xdp_md *ctx) {
 }
 
 char _license[] SEC("license") = "GPL";
+
+SEC("xdp_peer")
+int xdp_peer_pass(struct xdp_md *ctx) {
+    return XDP_PASS;
+}
