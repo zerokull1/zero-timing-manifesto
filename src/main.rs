@@ -149,14 +149,12 @@ unsafe fn process_server_packet(storage: *mut CoreStorage) {
             out("zmm0") _, out("zmm1") _, out("k1") _
         );
 
-        // ЛОВУШКА ДЛЯ СПЕКУЛЯТИВНОГО КОНВЕЙЕРА (DDR TRAP GUARD)
         if match_mask != 0 {
-            // Если атака обнаружена, принудительно направляем указатель в мертвую зону ddr_trap_pad текущего ядра
             let trap_ptr = &raw mut (*storage).ddr_trap_pad;
             asm!(
-                "mov rax, [{trap}]", // Чтение из ловушки активирует аппаратный Vector 14 при спекуляции
+                "prefetchw [{trap}]",
                 trap = in(reg) trap_ptr,
-                out("rax") _
+                options(nostack, nomem)
             );
             return;
         }
@@ -187,7 +185,7 @@ pub unsafe extern "C" fn handle_vector_14_page_fault() {
     asm!(
         "pushfq", "push rax", "push rbx", "push rcx", "push rdx", 
         "mov rax, cr2",  
-        "mov dword ptr [rax], 0", // 1 импульс гасит сбойный/спекулятивный поток нарушителя в ОЗУ
+        "mov dword ptr [rax], 0", 
         "pop rdx", "push rcx", "pop rbx", "pop rax", "popfq", 
         "iretq", 
         options(noreturn)
