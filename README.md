@@ -23,6 +23,7 @@ Designed for high-frequency trading (HFT), inline Deep Packet Inspection (DPI), 
 ├── src/             # Core Rust source code and inline assembly
 ├── docs/            # Architectural notes and deployment guides
 ├── Cargo.toml       # Package manifest (panic = "abort", LTO enabled)
+├── LICENSE          # GNU General Public License v3.0 (GPL-3.0)
 └── README.md        # Project overview and licensing terms
 ```
 
@@ -31,7 +32,7 @@ Designed for high-frequency trading (HFT), inline Deep Packet Inspection (DPI), 
 ## 🛠️ Building from Source
 
 ```bash
-git clone https://github.com/zerokull1/zero-timing-manifesto
+git clone https://github.com
 cd zero-timing-manifesto
 cargo build --release
 ```
@@ -42,7 +43,7 @@ cargo build --release
 
 ## 💼 Dual-Licensing & Commercial Integration Support
 
-* **Open Source License (AGPL-3.0):** For academic and non-commercial use (modifications require open-sourcing under AGPL).
+* **Open Source License (GPL-3.0):** For academic and non-commercial use (modifications require open-sourcing under GPL-3.0).
 * **Commercial License:** Required for enterprise, HFT, or closed-source integration. Contact: **1zerokull1@gmail.com** (`[COMMERCIAL INQUIRY] Company Name - Core Integration`).
 
 *(C) 2026 zerokull1. All Rights Reserved.*
