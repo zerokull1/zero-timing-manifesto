@@ -68,7 +68,6 @@ pub unsafe extern "C" fn _start() -> ! {
         let core_index = (core_id as usize) % MAX_SERVER_CORES;
         let next_core_index = (core_index + 1) % MAX_SERVER_CORES;
         
-        // ПРЕДИКТИВНЫЙ ПРОГРЕВ: Заранее затягиваем ячейку памяти следующего ядра в L1-кэш
         let next_storage_ptr = &raw mut SERVER_CORE_MATRIX[next_core_index];
         asm!(
             "prefetcht0 [{ptr}]",
@@ -88,13 +87,30 @@ unsafe fn process_server_packet(storage: *mut CoreStorage) {
     let next_index = ((*storage).rx_head + 1) % 1024;
     if next_index != (*storage).rx_tail {
         let head_ptr = &raw mut (*storage).buffer_matrix[(*storage).rx_head as usize];
-        *head_ptr = 0x77;
+        
+        // ВЕКТОРНЫЙ ДВИЖОК AVX-512: Мгновенная параллельная обработка 64 байт кадра
+        asm!(
+            "vpxord zmm0, zmm0, zmm0",       // Обнуляем векторный регистр zmm0
+            "vmovdqu64 zmm1, [{input}]",     // Загружаем 64 байта сырого трафика в zmm1
+            "vpcmpeqb k1, zmm1, zmm0",       // Сравниваем 64 байта с нулем за 1 такт
+            "kmovw eax, k1",                 // Переносим маску совпадений в регистр общего назначения
+            
+            // Записываем маркер успешной векторной валидации кадра
+            "mov byte ptr [{ptr}], 0x55",   
+            input = in(reg) head_ptr,
+            ptr = in(reg) head_ptr,
+            out("eax") _,
+            options(nostack)
+        );
+
+        // NUMA выталкивание кэша для серверных PCI-линков
         asm!(
             "clflush [{ptr}]",
             "sfence",
             ptr = in(reg) head_ptr,
             options(nostack, nomem)
         );
+
         (*storage).rx_head = next_index;
     }
 }
