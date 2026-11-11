@@ -5,13 +5,7 @@ mod tsc;
 mod core_engine;
 
 use core::arch::asm;
-use core::arch::x86_64::{_mm_prefetch, _MM_HINT_T0};
 use core::panic::PanicInfo;
-
-#[repr(align(64))]
-struct CacheLinePacket {
-    data: [u64; 8], // Ровно 64 байта (1 кэш-линия L1)
-}
 
 #[panic_handler]
 fn panic(_info: &PanicInfo) -> ! {
@@ -23,7 +17,7 @@ fn sys_write(fd: usize, buf: *const u8, len: usize) {
     unsafe {
         asm!(
             "syscall",
-            in("rax") 1usize, // SYS_write
+            in("rax") 1usize,
             in("rdi") fd,
             in("rsi") buf,
             in("rdx") len,
@@ -39,7 +33,7 @@ fn sys_exit(code: usize) -> ! {
     unsafe {
         asm!(
             "syscall",
-            in("rax") 60usize, // SYS_exit
+            in("rax") 60usize,
             in("rdi") code,
             options(noreturn, nostack)
         );
@@ -65,29 +59,46 @@ fn print_u64(mut n: u64) {
     sys_write(1, buf[i..].as_ptr(), 20 - i);
 }
 
+fn print_hex32(val: u32) {
+    const HEX: &[u8; 16] = b"0123456789ABCDEF";
+    let mut buf = [0u8; 10];
+    buf[0] = b'0';
+    buf[1] = b'x';
+    for i in 0..8 {
+        let nibble = ((val >> ((7 - i) * 4)) & 0xF) as usize;
+        buf[2 + i] = HEX[nibble];
+    }
+    sys_write(1, buf.as_ptr(), 10);
+}
+
 #[no_mangle]
-pub extern "C" fn _start() -> ! {
-    let packet = CacheLinePacket {
-        data: [1, 2, 3, 4, 5, 6, 7, 8],
-    };
+pub extern "C" fn main_entry() -> ! {
+    let (trap_cycles, clean_cycles, offloaded_sig, nvme_db) =
+        core_engine::simulate_ddr_trap_benchmark();
 
-    // Прогрев кэша и замер чтения выровненной кэш-линии с prefetcht0
-    let (sum, cycles) = tsc::measure_cycles(|| {
-        unsafe {
-            _mm_prefetch(packet.data.as_ptr() as *const i8, _MM_HINT_T0);
-        }
-        let mut acc = 0u64;
-        for i in 0..8 {
-            acc = acc.wrapping_add(unsafe { core::ptr::read_volatile(&packet.data[i]) });
-        }
-        acc
-    });
-
-    print_str("[Zero-Timing Core] Checksum: ");
-    print_u64(sum);
-    print_str(" | Latency: ");
-    print_u64(cycles);
+    print_str("[DDR Trap Simulation]\n");
+    print_str("  1. Attack Blocked (movnti + NVMe Doorbell): ");
+    print_u64(trap_cycles);
     print_str(" CPU cycles\n");
 
+    print_str("  2. Clean Packet   (clflush + NIC Doorbell): ");
+    print_u64(clean_cycles);
+    print_str(" CPU cycles\n");
+
+    print_str("  3. NVMe DMA Slot Signature: ");
+    print_hex32(offloaded_sig);
+    print_str(" | NVMe Doorbell Tail: ");
+    print_u64(nvme_db as u64);
+    print_str("\n");
+
     sys_exit(0);
+}
+
+#[unsafe(naked)]
+#[no_mangle]
+pub unsafe extern "C" fn _start() -> ! {
+    core::arch::naked_asm!(
+        "and rsp, -16",
+        "call main_entry"
+    );
 }

@@ -241,3 +241,66 @@ pub unsafe extern "C" fn handle_vector_14_page_fault() {
         "iretq"
     );
 }
+
+#[repr(C, align(4096))]
+struct MockMmioPage([u8; 0x2000]);
+
+static mut MOCK_NIC_MMIO: MockMmioPage = MockMmioPage([0; 0x2000]);
+static mut MOCK_NVME_MMIO: MockMmioPage = MockMmioPage([0; 0x2000]);
+
+pub fn simulate_ddr_trap_benchmark() -> (u64, u64, u32, u32) {
+    unsafe {
+        let nic_bar0 = (&raw mut MOCK_NIC_MMIO.0 as *mut u8) as u64;
+        let nvme_bar0 = (&raw mut MOCK_NVME_MMIO.0 as *mut u8) as u64;
+
+        let storage = (&raw mut SERVER_CORE_MATRIX as *mut CoreStorage).add(0);
+        (*storage).rx_head = 0;
+        (*storage).rx_tail = 16;
+
+        let buf_ptr = &raw mut (*storage).buffer_matrix as *mut u32;
+        core::ptr::write_volatile(buf_ptr.add(0), ATTACK_SIGNATURE_DWORD);
+        core::ptr::write_volatile(buf_ptr.add(1), 0x1122_3344);
+
+        let (_, trap_cycles) = crate::tsc::measure_cycles(|| {
+            process_server_packet(storage, nic_bar0, nvme_bar0);
+        });
+
+        let (_, clean_cycles) = crate::tsc::measure_cycles(|| {
+            process_server_packet(storage, nic_bar0, nvme_bar0);
+        });
+
+        let dma_ptr = &raw const NVME_OFFLOAD_DMA.slots as *const u32;
+        let offloaded_dword = core::ptr::read_volatile(dma_ptr.add(0));
+        let nvme_db_val = core::ptr::read_volatile((nvme_bar0 + NVME_SQ0_TAIL_DOORBELL) as *const u32);
+
+        (trap_cycles, clean_cycles, offloaded_dword, nvme_db_val)
+    }
+}
+
+#[allow(suspicious_runtime_symbol_definitions)]
+#[no_mangle]
+pub unsafe extern "C" fn memset(dest: *mut core::ffi::c_void, val: i32, count: usize) -> *mut core::ffi::c_void {
+    asm!(
+        "cld",
+        "rep stosb",
+        inout("rdi") dest => _,
+        in("al") val as u8,
+        inout("rcx") count => _,
+        options(nostack)
+    );
+    dest
+}
+
+#[allow(suspicious_runtime_symbol_definitions)]
+#[no_mangle]
+pub unsafe extern "C" fn memcpy(dest: *mut core::ffi::c_void, src: *const core::ffi::c_void, count: usize) -> *mut core::ffi::c_void {
+    asm!(
+        "cld",
+        "rep movsb",
+        inout("rdi") dest => _,
+        inout("rsi") src => _,
+        inout("rcx") count => _,
+        options(nostack)
+    );
+    dest
+}
