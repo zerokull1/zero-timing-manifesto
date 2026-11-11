@@ -3,5 +3,5 @@
 version = 4
 
 [[package]]
-name = "stage0_explorer"
+name = "zero_project"
 version = "0.1.0"

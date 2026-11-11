@@ -192,7 +192,7 @@ pub unsafe extern "C" fn _start() -> ! {
 unsafe fn process_server_packet(storage: *mut CoreStorage, nic_bar0: u64, nvme_bar0: u64) {
     // Выравниваем смещение в буфере строго по 4-байтовой границе (& !3)
     let aligned_offset = ((*storage).rx_head as usize) & !3;
-    let next_index = (((*storage).rx_head + 4) % 1024);
+    let next_index = ((*storage).rx_head + 4) % 1024;
     
     if next_index != (*storage).rx_tail {
         let head_ptr = &raw mut (*storage).buffer_matrix[aligned_offset];
