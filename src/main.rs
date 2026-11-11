@@ -9,14 +9,14 @@ const NIC_REG_RX_DOORBELL: u64 = 0x1008;
 
 #[allow(dead_code)]
 #[derive(Copy, Clone)]
-#[repr(align(4096))] // Каждая структура весит ровно 1 страницу памяти (4096 байт)
+#[repr(align(4096))]
 pub struct CoreStorage {
     tx_head: u32,
     tx_tail: u32,
     rx_head: u32,
     rx_tail: u32,
     buffer_matrix: [u8; 1024],
-    ddr_trap_pad: [u8; 3056], // Ювелирно подогнанный падинг: 16+1024+3056 = 4096 байт
+    ddr_trap_pad: [u8; 3056], 
 }
 
 static mut SERVER_CORE_MATRIX: [CoreStorage; MAX_SERVER_CORES] = {
@@ -64,7 +64,6 @@ pub unsafe extern "C" fn _start() -> ! {
     let interface_flags = XDP_FLAGS_DRV_MODE;
     asm!("mov edx, {flags:e}", "out dx, al", flags = in(reg) interface_flags, options(nostack));
 
-    // Фиксируем базовый физический адрес нашей матрицы в памяти
     let matrix_base_ptr = &raw mut SERVER_CORE_MATRIX;
 
     loop {
@@ -85,13 +84,13 @@ pub unsafe extern "C" fn _start() -> ! {
             options(nostack)
         );
 
-        // БЕЗНАГРУЗОЧНАЯ DDR-ЛОКАЛИЗАЦИЯ: Бинарный сдвиг вместо MSR-регистров
+        // ИСПРАВЛЕНО: Явно используем 32-битный регистр (:e) для исключения задержек Sign Extension
         asm!(
-            "mov rax, {id}",
-            "and rax, 0x7F",        // Ограничиваем индекс маской до 127 (MAX_SERVER_CORES)
-            "shl rax, 12",          // Умножаем APIC ID на 4096 (размер страницы) за 1 такт!
-            "add rax, {base}",      // Добавляем к базовому адресу матрицы
-            "mov {out_ptr}, rax",   // Получаем готовый прямой указатель на память текущего ядра
+            "mov eax, {id:e}",
+            "and rax, 0x7F",        
+            "shl rax, 12",          
+            "add rax, {base}",      
+            "mov {out_ptr}, rax",   
             id = in(reg) core_id,
             base = in(reg) matrix_base_ptr,
             out_ptr = out(reg) target_core_storage_ptr,
@@ -108,7 +107,10 @@ pub unsafe extern "C" fn _start() -> ! {
         
         asm!("lfence", options(nostack, nomem));
         
+        // РАЗВЕРТЫВАНИЕ ЦИКЛА (Loop Unrolling): Пакетная обработка для разгона конвейера
         process_server_packet(target_core_storage_ptr);
+        process_server_packet(target_core_storage_ptr);
+        
         asm!("hlt", options(nostack));
     }
 }
