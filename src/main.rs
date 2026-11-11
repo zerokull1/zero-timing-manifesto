@@ -81,6 +81,7 @@ pub unsafe extern "C" fn _start() -> ! {
     }
     asm!("mfence", options(nostack, nomem));
 
+    // ZERO-JITTER POLLING КОНТУР
     loop {
         let mut core_id: u32;
         let mut _tmp_rbx: u64;
@@ -124,7 +125,8 @@ pub unsafe extern "C" fn _start() -> ! {
         process_server_packet(target_core_storage_ptr);
         process_server_packet(target_core_storage_ptr);
         
-        asm!("hlt", options(nostack));
+        // Аппаратная микропауза конвейера: исключает мертвый сон (hlt) и разгружает шину ЦП
+        asm!("pause", options(nostack, nomem));
     }
 }
 
@@ -193,4 +195,4 @@ pub unsafe extern "C" fn handle_vector_14_page_fault() {
 }
 
 #[panic_handler]
-fn panic(_info: &PanicInfo) -> ! { loop { unsafe { asm!("hlt", options(noreturn)) }; } }
+fn panic(_info: &PanicInfo) -> ! { loop { unsafe { asm!("pause", options(nostack, nomem)) }; } }
