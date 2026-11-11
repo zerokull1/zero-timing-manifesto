@@ -49,6 +49,7 @@ make -C gpu_offload && ./gpu_offload/vk_iat_bridge
 ├── src/
 │   ├── main.rs          # Entry point, direct Linux syscalls, and benchmark runner
 │   ├── core_engine.rs   # Per-core matrix, PCIe GPU/NVMe/NIC scan, Active Shield & DMA offload
+│   ├── entropy_cpu.rs   # Zero-FPU Q16.16 integer Shannon entropy worker for GPU-less 1U racks
 │   └── tsc.rs           # Serialized hardware cycle counter (rdtsc / rdtscp + lfence)
 ├── docs/                # Architectural notes, register maps, and deployment guides
 ├── gpu_offload/         # Vulkan Compute SPIR-V kernel & Zero-Copy DDR bridge (/dev/shm)
