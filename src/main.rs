@@ -3,6 +3,7 @@
 
 mod tsc;
 mod core_engine;
+mod entropy_cpu;
 
 use core::arch::asm;
 use core::panic::PanicInfo;
@@ -99,7 +100,16 @@ pub extern "C" fn main_entry() -> ! {
                 i += 1;
             }
             unsafe { asm!("sfence", options(nostack)); }
-            print_str("  4. Shared DDR Ring (/dev/shm/zero_shield_ring) populated via movnti!\n");
+            let (cpu_alerts, cpu_h) = entropy_cpu::analyze_ddr_ring_cpu(ring_ptr);
+            print_str("  4. Rack CPU Worker (No-GPU Mode): Jitter=");
+            print_u64(cpu_alerts as u64);
+            print_str(" | Entropy=");
+            print_u64((cpu_h / 100) as u64);
+            print_str(".");
+            let frac = cpu_h % 100;
+            if frac < 10 { print_str("0"); }
+            print_u64(frac as u64);
+            print_str(" bits\n");
         }
     }
 
