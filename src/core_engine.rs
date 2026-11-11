@@ -261,6 +261,13 @@ pub fn simulate_ddr_trap_benchmark() -> (u64, u64, u32, u32) {
         core::ptr::write_volatile(buf_ptr.add(0), ATTACK_SIGNATURE_DWORD);
         core::ptr::write_volatile(buf_ptr.add(1), 0x1122_3344);
 
+        // Прогрев страниц памяти и TLB (убираем Minor Page Faults перед замером)
+        core::ptr::write_volatile((nvme_bar0 + NVME_SQ0_TAIL_DOORBELL) as *mut u32, 0);
+        core::ptr::write_volatile((nic_bar0 + NIC_REG_RX_DOORBELL) as *mut u32, 0);
+        let dma_warm = &raw mut NVME_OFFLOAD_DMA.slots as *mut u32;
+        core::ptr::write_volatile(dma_warm.add(0), 0);
+        core::ptr::write_volatile(&raw mut (*storage).ddr_trap_pad[0], 0);
+
         let (_, trap_cycles) = crate::tsc::measure_cycles(|| {
             process_server_packet(storage, nic_bar0, nvme_bar0);
         });
