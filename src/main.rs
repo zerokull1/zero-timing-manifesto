@@ -50,9 +50,8 @@ pub unsafe extern "C" fn _start() -> ! {
 
     loop {
         let mut core_id: u32;
-        let mut tmp_rbx: u64;
+        let mut _tmp_rbx: u64; // Добавили нижнее подчеркивание для подавления ворнингов
         
-        // Обходим ограничение LLVM: бэкапим rbx в свободный регистр {tmp} перед cpuid
         asm!(
             "mov {tmp}, rbx",
             "mov eax, 1",
@@ -61,12 +60,16 @@ pub unsafe extern "C" fn _start() -> ! {
             "mov {id:e}, ebx",
             "mov rbx, {tmp}",
             id = out(reg) core_id,
-            tmp = out(reg) tmp_rbx,
+            tmp = out(reg) _tmp_rbx,
             out("eax") _, out("ecx") _, out("edx") _,
             options(nostack)
         );
 
         let core_index = (core_id as usize) % MAX_SERVER_CORES;
+        
+        // Аппаратный барьер чтения для NUMA-архитектур
+        asm!("lfence", options(nostack, nomem));
+        
         process_server_packet(&raw mut SERVER_CORE_MATRIX[core_index]);
         asm!("hlt", options(nostack));
     }
