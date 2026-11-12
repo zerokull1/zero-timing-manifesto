@@ -1,5 +1,11 @@
 # Zero-Timing Manifesto (Русская документация)
 
+![Status](https://shields.io)
+![CI](https://github.com)
+![Rust](https://shields.io)
+![Arch](https://shields.io)
+![License](https://shields.io)
+
 **Детерминированное сверхнизколатентное ядро обработки пакетов на чистом `no_std` Rust и архитектурный эталон `x86_64` bare-metal.**
 
 > **Язык:** [English (`README.md`)](README.md) | **Русский**  

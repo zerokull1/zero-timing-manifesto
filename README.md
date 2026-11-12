@@ -1,9 +1,28 @@
 # Zero-Timing Manifesto
 
+![Status](https://shields.io)
+![CI](https://github.com)
+![Rust](https://shields.io)
+![Arch](https://shields.io)
+![License](https://shields.io)
+
 **Deterministic, ultra-low-latency `no_std` Rust (2024 Edition) data-plane core and `x86_64` bare-metal architectural blueprint.**
 
 > **Language:** **English** | [Русская версия (`README.ru.md`)](README.ru.md)  
 > **Hardware Logs:** Raw `lscpu`, `/proc/meminfo`, and execution telemetry are archived in [`docs/BENCHMARK_LOGS.md`](docs/BENCHMARK_LOGS.md).
+
+## Data-Plane Packet Flow Architecture
+
+```mermaid
+flowchart LR
+    NIC["NIC / Kernel Ingress<br/>(XDP / Zero-Copy AF_XDP)"] --> CPU["Isolated CPU Core 0<br/>Branchless x86_64 ASM & SWAR<br/>(27–36 cycles/pkt)"]
+    CPU --> ACTION{"Inline Verdict"}
+    ACTION -- "Pass / Forward" --> WIRE["TX Ring / HFT Bridge<br/>(SBE / ITCH / DPDK)"]
+    ACTION -- "Drop (Malicious)" --> DROP["Hardware / XDP Drop<br/>(Zero Allocation)"]
+    CPU -. "Non-Temporal Store<br/>(vmovntdq)" .-> RING["ZERORING Lock-Free Buffer<br/>(2MB HugePages)"]
+    RING -. "Async Sideband" .-> GPU["Vulkan Compute Sideband<br/>(Shannon IAT Entropy)"]
+    RING -. "Zero-Alloc Read" .-> TUI["TUI Radar & Watchdog"]
+```
 
 ## 1. Architectural Separation: Inline Fast-Path vs. Sideband & R&D
 

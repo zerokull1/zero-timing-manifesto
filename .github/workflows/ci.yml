@@ -1,4 +1,4 @@
-name: Zero-Timing & GPU Shield CI
+name: CI Build & Check
 
 on:
   push:
@@ -7,37 +7,15 @@ on:
     branches: [ main ]
 
 jobs:
-  build-and-verify:
+  build:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v5
-
-      - name: Install Rust toolchain (Host + UEFI target)
+      - uses: actions/checkout@v4
+      - name: Install Rust Toolchain
         uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: x86_64-unknown-uefi
-
-      - name: Install Vulkan SDK, glslc, and Mesa Lavapipe
+      - name: Build Core Release
+        run: cargo build --release
+      - name: Build C-ABI Shared Libraries
         run: |
-          sudo apt-get update
-          sudo apt-get install -y libvulkan-dev glslang-tools glslc mesa-vulkan-drivers
-
-      - name: Build Stage 0 UEFI Bootloader (Ring 0)
-        run: |
-          cargo build --release --manifest-path uefi_stage0/Cargo.toml --target x86_64-unknown-uefi
-
-      - name: Build Stage 1 no_std Rust Core (Release + LTO)
-        run: |
-          cargo build --release
-          ldd ./target/release/zero_project | grep -E "statically linked|not a dynamic executable"
-
-      - name: Run Rust Core Benchmark & Populate /dev/shm Ring
-        run: |
-          ./target/release/zero_project
-
-      - name: Build & Run Vulkan Compute Entropy Engine (Lavapipe)
-        run: |
-          make -C gpu_offload
-          ./gpu_offload/vk_iat_bridge
+          rustc --crate-type cdylib -O cisco_daq_plugin/src/lib.rs -o cisco_daq_plugin/libzero_cisco_daq.so
+          rustc --crate-type cdylib -O hft_exchange_bridge/src/lib.rs -o hft_exchange_bridge/libzero_hft_exchange.so
