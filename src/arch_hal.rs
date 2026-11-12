@@ -1,3 +1,4 @@
+#![no_std]
 #![allow(dead_code)]
 
 use core::arch::asm;
