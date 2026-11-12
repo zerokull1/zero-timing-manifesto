@@ -42,6 +42,48 @@ pub extern "C" fn zero_cisco_add_whitelist(net_be: u32, mask_be: u32) -> u32 {
     if GLOBAL_TTL_GUARD.add_whitelist_cidr(net_be, mask_be) { 1 } else { 0 }
 }
 
+
+#[inline(never)]
+unsafe fn sync_shm_telemetry(trapped: u64, whitelisted: u64) {
+    let path = b"/dev/shm/zero_ring\0";
+    let mut fd: isize;
+    core::arch::asm!(
+        "syscall",
+        in("rax") 2usize, // sys_open
+        in("rdi") path.as_ptr(),
+        in("rsi") 0x42usize, // O_CREAT | O_RDWR
+        in("rdx") 0o666usize,
+        lateout("rax") fd,
+        out("rcx") _, out("r11") _,
+    );
+    if fd >= 0 {
+        let mut buf = [0u8; 64];
+        buf[0..8].copy_from_slice(&0x5A45524F52494E47u64.to_le_bytes()); // "ZERORING"
+        buf[32..40].copy_from_slice(&trapped.to_le_bytes());
+        buf[40..48].copy_from_slice(&whitelisted.to_le_bytes());
+        let mut written: isize;
+        core::arch::asm!(
+            "syscall",
+            in("rax") 1usize, // sys_write
+            in("rdi") fd as usize,
+            in("rsi") buf.as_ptr(),
+            in("rdx") 64usize,
+            lateout("rax") written,
+            out("rcx") _, out("r11") _,
+        );
+        let _ = written;
+        let mut close_ret: isize;
+        core::arch::asm!(
+            "syscall",
+            in("rax") 3usize, // sys_close
+            in("rdi") fd as usize,
+            lateout("rax") close_ret,
+            out("rcx") _, out("r11") _,
+        );
+        let _ = close_ret;
+    }
+}
+
 #[no_mangle]
 pub extern "C" fn zero_cisco_init() {
     TOTAL_PKTS.store(0, Ordering::Release);
@@ -64,6 +106,13 @@ pub unsafe extern "C" fn zero_cisco_inspect_frame(frame_ptr: *const u8, frame_le
         let dst_ip = u32::from_be_bytes([*frame_ptr.add(30), *frame_ptr.add(31), *frame_ptr.add(32), *frame_ptr.add(33)]);
         let tcp_flags = if ip_proto == 6 { *frame_ptr.add(47) } else { 0 };
         let ttl_v = GLOBAL_TTL_GUARD.inspect_packet_ipv4(src_ip, dst_ip, ip_ttl, frag_field, tcp_flags, frame_len.saturating_sub(54));
+        let chk = GLOBAL_TTL_GUARD.total_checked.load(Ordering::Relaxed);
+        if (chk & 0xFF) == 0 {
+            sync_shm_telemetry(
+                GLOBAL_TTL_GUARD.total_trapped.load(Ordering::Relaxed),
+                GLOBAL_TTL_GUARD.total_whitelisted.load(Ordering::Relaxed),
+            );
+        }
         if ttl_v == TTL_VERDICT_DROP {
             DROPPED_L3_L4.fetch_add(1, Ordering::Relaxed);
             return 0;
