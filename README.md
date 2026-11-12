@@ -67,11 +67,11 @@ All baseline numbers below were measured on a standard desktop workstation (**In
 
 | Module / Directory | Status | Role & Technical Scope |
 | :--- | :--- | :--- |
-| `src/l7_shield.rs`, `src/hash_gate.rs`, `src/af_xdp_engine.rs` | **Production Ready** | Branchless L3/L4/L7 SWAR inspection & zero-copy `AF_XDP` UMEM engine |
-| `xdp_shield/`, `cisco_daq_plugin/`, `hft_exchange_bridge/` | **Production Ready** | Linux kernel XDP hook & C-ABI `.so` plugins for Snort 3 / DPDK / SBE / ITCH |
-| `include/zero_timing.h`, `integrations/python/`, `integrations/go/` | **Production Ready** | Zero-dependency C/C++, Python (`ctypes`), Go (`mmap`) SDKs & `systemd` XDP unit |
-| `src/numa_hugepages.rs`, `src/pcie_ddio_ptp.rs` | **Production Ready** | Raw syscall `2MB HugePages`, `NUMA MPOL_BIND`, Intel DDIO & PTP PHC reader |
-| `ring_reader/zero_tui_radar.rs`, `src/runtime_guard.rs` | **Production Ready** | Zero-allocation live telemetry TUI radar, Watchdog & DDR Flight Recorder |
+| `src/l7_shield.rs`, `src/hash_gate.rs`, `src/af_xdp_engine.rs` | **Beta / Verified** | Branchless L3/L4/L7 SWAR inspection & zero-copy `AF_XDP` UMEM engine |
+| `xdp_shield/`, `cisco_daq_plugin/`, `hft_exchange_bridge/` | **Beta / Verified** | Linux kernel XDP hook & C-ABI `.so` plugins for Snort 3 / DPDK / SBE / ITCH |
+| `include/zero_timing.h`, `integrations/python/`, `integrations/go/` | **Beta / Verified** | Zero-dependency C/C++, Python (`ctypes`), Go (`mmap`) SDKs & `systemd` XDP unit |
+| `src/numa_hugepages.rs`, `src/pcie_ddio_ptp.rs` | **Beta / Verified** | Raw syscall `2MB HugePages`, `NUMA MPOL_BIND`, Intel DDIO & PTP PHC reader |
+| `ring_reader/zero_tui_radar.rs`, `src/runtime_guard.rs` | **Beta / Verified** | Zero-allocation live telemetry TUI radar, Watchdog & DDR Flight Recorder |
 | `uefi_stage0/`, `src/thin_hypervisor.rs` | **R&D Blueprint** | Bare-metal UEFI Stage 0 pre-OS loader & `VT-x` / `AMD-V` Ring -1 skeleton |
 
 ## 4. Building & Reproducing Benchmarks
