@@ -7,6 +7,7 @@ mod entropy_cpu;
 mod smp_stress;
 mod l7_shield;
 mod af_xdp_engine;
+mod nic_bar0_pmd;
 
 use core::arch::asm;
 use core::panic::PanicInfo;

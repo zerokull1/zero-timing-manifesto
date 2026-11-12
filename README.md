@@ -49,6 +49,7 @@ make -C gpu_offload && ./gpu_offload/vk_iat_bridge
 ```text
 ├── .cargo/              # Compiler flags and bare-metal target settings
 ├── src/
+│   ├── nic_bar0_pmd.rs  # OS-agnostic PCIe BAR0 MMIO Poll-Mode Driver (UEFI/Linux/Windows)
 │   ├── af_xdp_engine.rs # Zero-copy AF_XDP socket & 256KB UMEM ring registration (no_std)
 │   ├── main.rs          # Entry point, direct Linux syscalls, and benchmark runner
 │   ├── core_engine.rs   # Per-core matrix, PCIe GPU/NVMe/NIC scan, Active Shield & DMA offload
