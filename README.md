@@ -12,6 +12,7 @@ Designed for high-frequency trading (HFT), inline Deep Packet Inspection (DPI), 
 * **Active Inline TCP Shield (L3/L4 Normalization):** Deterministic mitigation of stateful bypass anomalies (`0x00` Null-segments via `ACK` injection and `TTL` desynchronization normalization) paired with non-temporal `movnti` SIEM forensics dumps to NVMe DMA pages.
 * **Hybrid CPU + GPU Offload (Thermal & TDP Optimization):** PCIe cold-boot enumeration (`class 0x01` NVMe, `class 0x02` NIC, `class 0x03` iGPU/dGPU `BAR0`/`BAR2`) offloads heavy Inter-Arrival Time (IAT) and Shannon entropy spectral analysis to GPU Compute queues via cache-bypassing DDR rings, keeping server CPU cores cool under 100G+ load.
 * **Cache-Line Sterile Memory Layout:** Strict `#[repr(C, align(4096))]` per-core matrices (`128` cores) and 64-byte cache-line alignment paired with hardware prefetching (`prefetcht0`/`prefetchw`).
+* **Autonomous 512-Bit Mutagenic Seal & 3-Way HW Attestation (`mutagenic_seal.rs`):** Hardware `RDRAND` entropy bound to `CPU + GPU + NVMe` PCIe signatures continuously mutates a 512-bit register keystream per `TSC` cycle, sealing DDR rings via `movnti` with a 1-cycle branchless (`cmovnz`) self-destruct trap.
 * **Direct x86_64 Hardware Control:** Low-level manipulation of control registers (`CR0`, `CR3`, `CR4`), PCIe `0xCF8`/`0xCFC` enumeration, GDT transitions, and custom `#PF` (`iretq`) handlers.
 
 ---
@@ -49,6 +50,7 @@ make -C gpu_offload && ./gpu_offload/vk_iat_bridge
 ```text
 ├── .cargo/              # Compiler flags and bare-metal target settings
 ├── src/
+│   ├── mutagenic_seal.rs  # Autonomous 512-bit rolling mutagenic keystream & 1-cycle DDR trap
 │   ├── thin_hypervisor.rs # Ring -1 Intel VT-x (VMXON) & AMD-V (SVM) bare-metal hypervisor stub
 │   ├── arch_hal.rs      # Multi-arch x86_64 & ARM64 (aarch64) zero-branch & non-temporal HAL
 │   ├── flow_table.rs    # Lock-free 64-byte cache-aligned 65K flow table in DDR
