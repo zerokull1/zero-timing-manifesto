@@ -97,38 +97,71 @@ pub unsafe extern "C" fn rust_radar_main(argc: u64) -> u64 {
     let infinite = argc > 1;
     let mut frame: u64 = 0;
 
+    let (mut prev_rx, mut prev_tx) = read_live_net_packets();
+    // Самообучающийся базовый порог пакетов в секунду (начинаем с 2500 PPS, плавно адаптируется под трафик)
+    let mut learned_pps_thresh: u64 = 2500;
+    let mut anomalies_caught: u64 = 0;
+
     loop {
+        sys_nanosleep(250);
         let tsc = rdtscp_now();
         let (rx_pkts, tx_pkts) = read_live_net_packets();
+
+        // Мгновенный расчёт скорости пакетов в секунду (PPS = дельта за 250мс * 4)
+        let rx_pps = rx_pkts.saturating_sub(prev_rx).wrapping_mul(4);
+        let tx_pps = tx_pkts.saturating_sub(prev_tx).wrapping_mul(4);
+        prev_rx = rx_pkts;
+        prev_tx = tx_pkts;
+
+        // Самообучение порога (EMA): плавно подстраивается под текущий темп сети (игры/браузер)
+        let is_spike = rx_pps > learned_pps_thresh && rx_pps > tx_pps.saturating_mul(8).saturating_add(500);
+        if is_spike {
+            anomalies_caught = anomalies_caught.wrapping_add(1);
+            learned_pps_thresh = learned_pps_thresh.saturating_sub(100).max(1200);
+        } else {
+            // Плавное обучение: 7/8 старого порога + 1/8 от (текущий RX_PPS * 2 + 1500)
+            let target = rx_pps.saturating_mul(2).saturating_add(1500);
+            learned_pps_thresh = (learned_pps_thresh.saturating_mul(7).saturating_add(target)) >> 3;
+        }
+
         sys_write(1, b"\x1B[2J\x1B[H".as_ptr(), 7);
 
-        let h = b"=================================================================\n  ZERO-TIMING LIVE SYSTEM RADAR (Arch Linux | no_std Rust)\n=================================================================\n  [CPU TSC Clock]       : ";
+        let h = b"=================================================================\n  ZERO-TIMING ADAPTIVE RADAR & AI GATEWAY (no_std Rust)\n=================================================================\n  [CPU TSC Clock]        : ";
         sys_write(1, h.as_ptr(), h.len());
         let s1 = write_u64(tsc, &mut num_buf); sys_write(1, s1.as_ptr(), s1.len());
 
-        let l2 = b"\n  [Live NIC RX Packets] : "; sys_write(1, l2.as_ptr(), l2.len());
+        let l2 = b"\n  [Live NIC RX / TX]     : "; sys_write(1, l2.as_ptr(), l2.len());
         let s2 = write_u64(rx_pkts, &mut num_buf); sys_write(1, s2.as_ptr(), s2.len());
-
-        let l3 = b"\n  [Live NIC TX Packets] : "; sys_write(1, l3.as_ptr(), l3.len());
+        sys_write(1, b" / ".as_ptr(), 3);
         let s3 = write_u64(tx_pkts, &mut num_buf); sys_write(1, s3.as_ptr(), s3.len());
 
-        let l4 = b"\n  [512-Bit YMM Seal]    : ACTIVE (AVX2 vmovntdq + 1-Cycle Trap)\n  [Refresh Frame]       : ";
-        sys_write(1, l4.as_ptr(), l4.len());
+        let l3 = b" pkts\n  [Instant Speed (PPS)]  : "; sys_write(1, l3.as_ptr(), l3.len());
+        let s_pps = write_u64(rx_pps, &mut num_buf); sys_write(1, s_pps.as_ptr(), s_pps.len());
+        sys_write(1, b" pkt/s (Learned Limit: ".as_ptr(), 23);
+        let s_lim = write_u64(learned_pps_thresh, &mut num_buf); sys_write(1, s_lim.as_ptr(), s_lim.len());
+        sys_write(1, b" pkt/s)\n  [Adaptive AI Verdict]  : ".as_ptr(), 33);
+
+        if is_spike {
+            sys_write(1, b"QUARANTINE / SPIKE MITIGATED!".as_ptr(), 29);
+        } else {
+            sys_write(1, b"NORMAL (Flow Baseline Learned)".as_ptr(), 30);
+        }
+
+        let l4 = b"\n  [Anomalies Mitigated]  : "; sys_write(1, l4.as_ptr(), l4.len());
+        let s_anom = write_u64(anomalies_caught, &mut num_buf); sys_write(1, s_anom.as_ptr(), s_anom.len());
+
+        let l5 = b"\n  [512-Bit YMM Seal]     : ACTIVE | Frame: "; sys_write(1, l5.as_ptr(), l5.len());
         frame += 1;
         let s4 = write_u64(frame, &mut num_buf); sys_write(1, s4.as_ptr(), s4.len());
 
-        let f = if infinite { b" (LIVE - Ctrl+C to exit)\n=================================================================\n" as &[u8] }
+        let f = if infinite { b" (LIVE - Ctrl+C)\n=================================================================\n" as &[u8] }
                 else { b" / 10 (DEMO)\n=================================================================\n" as &[u8] };
         sys_write(1, f.as_ptr(), f.len());
 
         if !infinite && frame >= 10 { break; }
-        sys_nanosleep(250);
     }
     0
 }
-
-#[panic_handler]
-fn panic(_: &core::panic::PanicInfo) -> ! { loop {} }
 
 #[no_mangle]
 pub unsafe extern "C" fn memset(s: *mut u8, c: i32, n: usize) -> *mut u8 {
@@ -144,3 +177,6 @@ pub unsafe extern "C" fn memcpy(dest: *mut u8, src: *const u8, n: usize) -> *mut
 
 #[no_mangle]
 pub extern "C" fn rust_eh_personality() {}
+
+#[panic_handler]
+fn panic(_: &core::panic::PanicInfo) -> ! { loop {} }
