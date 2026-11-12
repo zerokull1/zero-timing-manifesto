@@ -113,6 +113,6 @@ taskset -c 0 ./target/release/zero_project
 ## 💼 Dual-Licensing & Commercial Integration Support
 
 * **Open Source License (GPL-3.0):** For academic and non-commercial use (modifications require open-sourcing under GPL-3.0).
-* **Commercial License:** Required for enterprise, HFT, or closed-source integration. Contact: **1zerokull1@gmail.com** (`[COMMERCIAL INQUIRY] Company Name - Core Integration`).
+* **Commercial License:** Required for enterprise, HFT, or closed-source integration. Contact: [GitHub Issues](https://github.com/zerokull1/zero-timing-manifesto/issues) (`[COMMERCIAL INQUIRY] Company Name - Core Integration`).
 
 *(C) 2026 zerokull1. All Rights Reserved.*
