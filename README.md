@@ -28,7 +28,7 @@ flowchart LR
 
 ```mermaid
 flowchart TD
-    BOOT["0. Stage 0: Ephemeral UEFI BIOS Mutagen<br/>(Volatile RAM TSC Seed, CR0.WP & Zero NVRAM Write)"] --> GATE["1. Constant-Time Hash Gate & L7 Shield<br/>(Zero-Timing Side-Channel Resistance)"]
+    BOOT["0. Stage 0: Ephemeral UEFI BIOS Mutagen<br/>(Volatile RAM TSC Seed, 2–100 USB Boot Keys Quorum, CR0.WP & Zero NVRAM Write)"] --> GATE["1. Constant-Time Hash Gate & L7 Shield<br/>(Zero-Timing Side-Channel Resistance)"]
     IN["Incoming Traffic / L7 Payload"] --> GATE
     
     GATE -- "Verified Clean Flow" --> ENC["Encrypted / Isolated Memory Ring<br/>(Zero-Copy Protected Handoff)"]
