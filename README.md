@@ -46,6 +46,13 @@ flowchart TD
 
 ## 2. Hardware Cycle Benchmarks (`rdtscp + lfence`)
 
+### Reference Testbed & Call for Hardware Benchmarks
+
+All baseline numbers below were measured on a standard desktop workstation (**Intel Core i5-4590 Haswell, 3.30 GHz, AVX2 only / no AVX-512** + **NVIDIA GTX 1050 Pascal** for Vulkan Compute sideband):
+
+* **Desktop Hardware Baseline:** XDP/AF_XDP benchmarks were executed without server-grade hardware `Intel DDIO` or native zero-copy server NIC drivers — meaning modern `Xeon Scalable` or `AMD EPYC` servers will achieve even lower cycle counts.
+* **Community Call for `XDP_DRV` Tests:** Contributions from engineers with server NICs (**Intel X710 / E810**, **Mellanox ConnectX-5/6**) running native `XDP_DRV` zero-copy benchmarks via GitHub Issues or PRs are very welcome!
+
 | Execution Layer / Component | Measured Latency | Measurement Methodology & Scope |
 | :--- | :--- | :--- |
 | **SMP 4-Core Matrix (`10M pkts`)** | **~0.5–0.6 ns/pkt** | Amortized aggregate throughput across 4 isolated cores (`align(4096)`, zero false-sharing) |
