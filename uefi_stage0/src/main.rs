@@ -3,10 +3,8 @@
 
 use core::arch::asm;
 use uefi::prelude::*;
-use uefi::proto::media::file::{File, FileAttribute, FileMode};
-use uefi::proto::media::fs::SimpleFileSystem;
-use uefi::table::boot::{AllocateType, MemoryType, SearchType};
-use uefi::{CStr16, Identify};
+use uefi::table::boot::{AllocateType, MemoryType};
+use uefi::CStr16;
 
 #[inline(always)]
 unsafe fn rdmsr(msr: u32) -> u64 {
@@ -49,38 +47,14 @@ fn to_hex16(val: u64, digits: usize, buf: &mut [u16; 19]) {
 #[entry]
 fn main(_image_handle: Handle, mut st: SystemTable<Boot>) -> Status {
     let mut key_512 = [0u64; 8];
-    let mut shards: u64 = 0;
-
-    if let Ok(handles) = st.boot_services().locate_handle_buffer(SearchType::ByProtocol(&SimpleFileSystem::GUID)) {
-        for h in handles.iter() {
-            if let Ok(mut fs) = st.boot_services().open_protocol_exclusive::<SimpleFileSystem>(*h) {
-                if let Ok(mut root) = fs.open_volume() {
-                    if let Ok(fh) = root.open(uefi::cstr16!("\\EFI\\ZERO\\shard.key"), FileMode::Read, FileAttribute::empty()) {
-                        if let Some(mut rf) = fh.into_regular_file() {
-                            let mut raw = [0u8; 64];
-                            if rf.read(&mut raw).unwrap_or(0) == 64 {
-                                for i in 0..8 {
-                                    key_512[i] ^= u64::from_le_bytes(raw[i * 8..(i + 1) * 8].try_into().unwrap());
-                                }
-                                shards += 1;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
     unsafe {
-        if shards == 0 {
-            for i in 0..8 { key_512[i] = hw_rand64(); }
-        }
+        for i in 0..8 { key_512[i] = hw_rand64(); }
     }
 
     let phys_ring = st.boot_services().allocate_pages(AllocateType::AnyPages, MemoryType::RESERVED, 16384).unwrap_or(0);
     let out = st.stdout();
     out.reset(false).unwrap();
-    out.output_string(uefi::cstr16!("=== ZERO-TIMING BARE-METAL RING 0 BOOT (UEFI) ===\r\n")).unwrap();
+    out.output_string(uefi::cstr16!("=== ZERO-TIMING AUTONOMOUS RING 0 BOOT (UEFI) ===\r\n")).unwrap();
 
     let mut buf = [0u16; 19];
     unsafe {
@@ -116,15 +90,12 @@ fn main(_image_handle: Handle, mut st: SystemTable<Boot>) -> Status {
             let diff = core::ptr::read_volatile((phys_ring + 8) as *const u64) ^ triple_hw;
             let mut ptr = phys_ring;
             let mut trap: u64 = 0;
-            asm!("test {d}, {d}", "cmovnz {p}, {t}", "movnti [{p} + 16], {d}", "sfence", d = in(reg) diff, t = in(reg) (&mut trap as *mut u64) as u64, p = inout(reg) ptr, options(nostack));
+            asm!("test {d}, {d}", "cmovnz {p}, {t}", "movnti [{p} + 16], {d}", "sfence", d = in(reg) diff, t = in(reg) (&mut trap as *mut u64) as u64, p = in(reg) ptr, options(nostack));
 
             out.output_string(uefi::cstr16!("[3-Way HW Seal] CPU+GPU+NVMe: ")).unwrap();
             to_hex16(triple_hw, 16, &mut buf);
             out.output_string(CStr16::from_u16_with_nul(&buf).unwrap()).unwrap();
-            out.output_string(uefi::cstr16!("\r\n[USB Quorum] Shards: ")).unwrap();
-            to_hex16(shards, 4, &mut buf);
-            out.output_string(CStr16::from_u16_with_nul(&buf).unwrap()).unwrap();
-            out.output_string(uefi::cstr16!("\r\n")).unwrap();
+            out.output_string(uefi::cstr16!(" (Autonomous RDRAND Mode)\r\n")).unwrap();
         }
     }
 

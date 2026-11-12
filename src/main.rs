@@ -154,6 +154,13 @@ pub extern "C" fn main_entry() -> ! {
     quic_probe[5] = 25;
     let quic_v = unsafe { l7_shield::inspect_quic_l7_asm(quic_probe.as_ptr(), 16) };
     let _ = (vmx, svm, quic_v);
+    let mut m_key = mutagenic_seal::MutagenicKey512::new([0x5A45_524F_5249_4E47; 8], 0xDEAD_BEEF_CAFE_BABE);
+    let mut sealed_ddr = [0u64; 8];
+    let mut trap_sink = 0u64;
+    unsafe {
+        m_key.seal_block_64b(&[1, 2, 3, 4, 5, 6, 7, 8], sealed_ddr.as_mut_ptr(), 12345);
+        let _ = m_key.verify_or_vaporize(0xDEAD_BEEF_CAFE_BABE, &mut trap_sink);
+    }
     let (xsk_fd, umem_addr, rx_len, rx_verdict) = af_xdp_engine::run_live_xdp_zerocopy_rx(0, map_fd);
     print_str("  7. AF_XDP Zero-Copy UMEM Subsystem: ");
     if xsk_fd >= 0 {
