@@ -7,7 +7,7 @@ type EfiStatus = usize;
 type EfiHandle = *mut core::ffi::c_void;
 
 #[repr(C)]
-struct EfiTableHeader {
+pub struct EfiTableHeader {
     signature: u64,
     revision: u32,
     header_size: u32,
@@ -16,7 +16,7 @@ struct EfiTableHeader {
 }
 
 #[repr(C)]
-struct EfiBootServices {
+pub struct EfiBootServices {
     hdr: EfiTableHeader,
     raise_tpl: usize,
     restore_tpl: usize,
@@ -54,7 +54,7 @@ struct EfiBootServices {
 }
 
 #[repr(C)]
-struct EfiSystemTable {
+pub struct EfiSystemTable {
     hdr: EfiTableHeader,
     firmware_vendor: *const u16,
     firmware_revision: u32,
