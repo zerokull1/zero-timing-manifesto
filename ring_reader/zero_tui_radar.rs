@@ -129,3 +129,18 @@ pub unsafe extern "C" fn rust_radar_main(argc: u64) -> u64 {
 
 #[panic_handler]
 fn panic(_: &core::panic::PanicInfo) -> ! { loop {} }
+
+#[no_mangle]
+pub unsafe extern "C" fn memset(s: *mut u8, c: i32, n: usize) -> *mut u8 {
+    for i in 0..n { *s.add(i) = c as u8; }
+    s
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn memcpy(dest: *mut u8, src: *const u8, n: usize) -> *mut u8 {
+    for i in 0..n { *dest.add(i) = *src.add(i); }
+    dest
+}
+
+#[no_mangle]
+pub extern "C" fn rust_eh_personality() {}
