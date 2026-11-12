@@ -62,6 +62,13 @@ pub unsafe extern "C" fn zero_cisco_inspect_frame(frame_ptr: *const u8, frame_le
         return 1;
     }
 
+    // 2.1 Мгновенный сброс фрагментированных IPv4-пакетов (MF bit 0x2000 или FragOffset != 0)
+    let frag_off = u16::from_be(core::ptr::read_unaligned(frame_ptr.add(20) as *const u16));
+    if (frag_off & 0x3FFF) != 0 {
+        DROPPED_L3_L4.fetch_add(1, Ordering::Relaxed);
+        return 1;
+    }
+
     let proto = *frame_ptr.add(23);
     if proto != 6 {
         return 0;

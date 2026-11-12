@@ -55,16 +55,29 @@ pub unsafe fn poll_nic_bar0_ring(
     let pkt_len = core::ptr::read_volatile(&(*desc_ptr).length) as u32;
     let pkt_ptr = core::ptr::read_volatile(&(*desc_ptr).buffer_addr) as *const u8;
 
-    // Если кадр >= 70 байт, прогоняем L7 payload через наш безветвящийся ASM-фильтр
+    // Динамический расчёт границ L3/L4 (защита от IP/TCP Options и IP-фрагментации)
     if pkt_len >= 70 && !pkt_ptr.is_null() {
-        let verdict = crate::l7_shield::inspect_l7_payload_asm(pkt_ptr.add(54), (pkt_len - 54) as usize, 80);
+        let ihl = ((*pkt_ptr.add(14)) & 0x0F) as u32 * 4;
+        let frag = u16::from_be(core::ptr::read_unaligned(pkt_ptr.add(20) as *const u16));
+        let tcp_off = 14 + ihl;
+        if ihl >= 20 && (frag & 0x3FFF) == 0 && pkt_len >= tcp_off + 20 {
+            let tcp_doff = (((*pkt_ptr.add((tcp_off + 12) as usize)) >> 4) as u32) * 4;
+            let l7_off = tcp_off + tcp_doff;
+            if tcp_doff >= 20 && pkt_len >= l7_off + 16 {
+                let verdict = crate::l7_shield::inspect_l7_payload_asm(
+                    pkt_ptr.add(l7_off as usize),
+                    (pkt_len - l7_off) as usize,
+                    80,
+                );
         asm!(
             "movnti [{dst}], {v:e}",
             "sfence",
             dst = in(reg) ddr_siem_slot,
             v = in(reg) verdict as u32,
             options(nostack)
-        );
+                );
+            }
+        }
     }
 
     // Сбрасываем статус дескриптора и сдвигаем аппаратный хвост RDT напрямую в BAR0

@@ -37,6 +37,7 @@ int xdp_zero_shield_prog(struct xdp_md *ctx) {
 
     struct iphdr *ip = (void *)(eth + 1);
     if ((void *)(ip + 1) > data_end) return XDP_PASS;
+    if ((ip->frag_off & __constant_htons(0x3FFF)) != 0) { __sync_fetch_and_add(&st->dropped_null_tcp, 1); return XDP_DROP; }
     if (ip->protocol != IPPROTO_TCP) {
         st->passed++;
         return XDP_PASS;
