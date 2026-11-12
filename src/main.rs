@@ -23,6 +23,8 @@ mod mutagenic_seal;
 mod numa_hugepages;
 #[allow(unused_imports)]
 mod pcie_ddio_ptp;
+#[allow(unused_imports)]
+mod adaptive_gateway;
 
 use core::arch::asm;
 use core::panic::PanicInfo;

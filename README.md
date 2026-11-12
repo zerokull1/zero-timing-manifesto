@@ -50,6 +50,7 @@ make -C gpu_offload && ./gpu_offload/vk_iat_bridge
 ```text
 ├── .cargo/              # Compiler flags and bare-metal target settings
 ├── src/
+│   ├── adaptive_gateway.rs # Self-learning branchless ASM anti-DDoS entropy gateway
 │   ├── pcie_ddio_ptp.rs   # Intel DDIO L3 cache-direct priming & NIC PTP IEEE 1588 PHC reader
 │   ├── numa_hugepages.rs  # Zero-TLB-miss 2MB HugePages & NUMA MPOL_BIND raw syscall allocator
 │   ├── mutagenic_seal.rs  # Autonomous 512-bit rolling mutagenic keystream & 1-cycle DDR trap
