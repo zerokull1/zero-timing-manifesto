@@ -1,0 +1,15 @@
+[Unit]
+Description=Zero-Timing Manifesto eBPF/XDP Ingress Shield
+After=network-pre.target
+Before=network.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+Environment=IFACE=eth0
+WorkingDirectory=/opt/zero-timing-manifesto/xdp_shield
+ExecStart=/sbin/ip link set dev ${IFACE} xdp obj xdp_zero_shield.o sec xdp
+ExecStop=/sbin/ip link set dev ${IFACE} xdp off
+
+[Install]
+WantedBy=multi-user.target
