@@ -7,10 +7,15 @@ mod entropy_cpu;
 mod smp_stress;
 mod l7_shield;
 mod af_xdp_engine;
+#[allow(unused_imports)]
 mod nic_bar0_pmd;
+#[allow(unused_imports)]
 mod ring_abi;
+#[allow(unused_imports)]
 mod flow_table;
+#[allow(unused_imports)]
 mod arch_hal;
+#[allow(unused_imports)]
 mod thin_hypervisor;
 
 use core::arch::asm;
@@ -140,6 +145,13 @@ pub extern "C" fn main_entry() -> ! {
     print_str("\n");
     print_str("\n");
     let map_fd = unsafe { af_xdp_engine::open_pinned_xsk_map() };
+    let vmx = unsafe { thin_hypervisor::cpu_supports_vmx() };
+    let svm = unsafe { thin_hypervisor::cpu_supports_svm() };
+    let mut quic_probe = [0u8; 16];
+    quic_probe[0] = 0xC0;
+    quic_probe[5] = 25;
+    let quic_v = unsafe { l7_shield::inspect_quic_l7_asm(quic_probe.as_ptr(), 16) };
+    let _ = (vmx, svm, quic_v);
     let (xsk_fd, umem_addr, rx_len, rx_verdict) = af_xdp_engine::run_live_xdp_zerocopy_rx(0, map_fd);
     print_str("  7. AF_XDP Zero-Copy UMEM Subsystem: ");
     if xsk_fd >= 0 {
