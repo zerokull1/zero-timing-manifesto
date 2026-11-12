@@ -3,8 +3,7 @@
 
 use core::arch::asm;
 use uefi::prelude::*;
-use uefi::table::boot::{AllocateType, MemoryType};
-use uefi::CStr16;
+use uefi::boot::{self, AllocateType, MemoryType};
 
 #[inline(always)]
 unsafe fn rdmsr(msr: u32) -> u64 {
@@ -45,13 +44,13 @@ fn to_hex16(val: u64, digits: usize, buf: &mut [u16; 19]) {
 }
 
 #[entry]
-fn main(_image_handle: Handle, mut st: SystemTable<Boot>) -> Status {
+fn main() -> Status {
     let mut key_512 = [0u64; 8];
     unsafe {
         for i in 0..8 { key_512[i] = hw_rand64(); }
     }
 
-    let phys_ring = st.boot_services().allocate_pages(AllocateType::AnyPages, MemoryType::RESERVED, 16384).unwrap_or(0);
+    let phys_ring = boot::allocate_pages(AllocateType::AnyPages, MemoryType::RESERVED, 16384).unwrap_or(0);
     let out = st.stdout();
     out.reset(false).unwrap();
     out.output_string(uefi::cstr16!("=== ZERO-TIMING AUTONOMOUS RING 0 BOOT (UEFI) ===\r\n")).unwrap();
@@ -88,7 +87,7 @@ fn main(_image_handle: Handle, mut st: SystemTable<Boot>) -> Status {
             asm!("movnti [{d}], {m}", "movnti [{d} + 8], {h}", "sfence", d = in(reg) phys_ring, m = in(reg) sealed_magic, h = in(reg) triple_hw, options(nostack));
 
             let diff = core::ptr::read_volatile((phys_ring + 8) as *const u64) ^ triple_hw;
-            let mut ptr = phys_ring;
+            let ptr = phys_ring;
             let mut trap: u64 = 0;
             asm!("test {d}, {d}", "cmovnz {p}, {t}", "movnti [{p} + 16], {d}", "sfence", d = in(reg) diff, t = in(reg) (&mut trap as *mut u64) as u64, p = in(reg) ptr, options(nostack));
 
