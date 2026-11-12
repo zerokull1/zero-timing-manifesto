@@ -51,6 +51,7 @@ typedef struct __attribute__((aligned(64))) {
 /* C-ABI точки входа для Cisco DAQ / Snort 3, HFT мостов и Active Defense */
 void     zero_cisco_init(void);
 uint32_t zero_cisco_inspect_frame(const uint8_t *frame_ptr, size_t frame_len);
+uint32_t zero_cisco_add_whitelist(uint32_t net_be, uint32_t mask_be);
 void     zero_hft_init(uint32_t target_security_id);
 int64_t  zero_hft_on_market_frame(const uint8_t *frame_ptr, size_t frame_len);
 void    zero_configure_active_defense(uint32_t flags, uint16_t entropy_threshold_x100, uint32_t mtd_epoch);

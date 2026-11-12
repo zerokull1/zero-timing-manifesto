@@ -32,6 +32,61 @@ unsafe fn rdtscp_end() -> u64 {
     ((hi as u64) << 32) | (lo as u64)
 }
 
+
+#[path = "../src/ttl_guard.rs"]
+mod ttl_guard;
+use ttl_guard::{GLOBAL_TTL_GUARD, TTL_VERDICT_DROP, TTL_VERDICT_TRAP};
+
+const MAX_WHITELIST: usize = 16;
+static WHITELIST_NETS: [core::sync::atomic::AtomicU32; MAX_WHITELIST] = [
+    core::sync::atomic::AtomicU32::new(0), core::sync::atomic::AtomicU32::new(0),
+    core::sync::atomic::AtomicU32::new(0), core::sync::atomic::AtomicU32::new(0),
+    core::sync::atomic::AtomicU32::new(0), core::sync::atomic::AtomicU32::new(0),
+    core::sync::atomic::AtomicU32::new(0), core::sync::atomic::AtomicU32::new(0),
+    core::sync::atomic::AtomicU32::new(0), core::sync::atomic::AtomicU32::new(0),
+    core::sync::atomic::AtomicU32::new(0), core::sync::atomic::AtomicU32::new(0),
+    core::sync::atomic::AtomicU32::new(0), core::sync::atomic::AtomicU32::new(0),
+    core::sync::atomic::AtomicU32::new(0), core::sync::atomic::AtomicU32::new(0),
+];
+static WHITELIST_MASKS: [core::sync::atomic::AtomicU32; MAX_WHITELIST] = [
+    core::sync::atomic::AtomicU32::new(0), core::sync::atomic::AtomicU32::new(0),
+    core::sync::atomic::AtomicU32::new(0), core::sync::atomic::AtomicU32::new(0),
+    core::sync::atomic::AtomicU32::new(0), core::sync::atomic::AtomicU32::new(0),
+    core::sync::atomic::AtomicU32::new(0), core::sync::atomic::AtomicU32::new(0),
+    core::sync::atomic::AtomicU32::new(0), core::sync::atomic::AtomicU32::new(0),
+    core::sync::atomic::AtomicU32::new(0), core::sync::atomic::AtomicU32::new(0),
+    core::sync::atomic::AtomicU32::new(0), core::sync::atomic::AtomicU32::new(0),
+    core::sync::atomic::AtomicU32::new(0), core::sync::atomic::AtomicU32::new(0),
+];
+static WHITELIST_COUNT: core::sync::atomic::AtomicUsize = core::sync::atomic::AtomicUsize::new(0);
+
+#[no_mangle]
+pub extern "C" fn zero_cisco_add_whitelist(net_be: u32, mask_be: u32) -> u32 {
+    let idx = WHITELIST_COUNT.load(core::sync::atomic::Ordering::Acquire);
+    if idx >= MAX_WHITELIST {
+        return 0;
+    }
+    WHITELIST_NETS[idx].store(net_be & mask_be, core::sync::atomic::Ordering::Release);
+    WHITELIST_MASKS[idx].store(mask_be, core::sync::atomic::Ordering::Release);
+    WHITELIST_COUNT.store(idx + 1, core::sync::atomic::Ordering::Release);
+    1
+}
+
+#[inline(always)]
+fn is_whitelisted_ipv4(src_ip_be: u32) -> bool {
+    let cnt = WHITELIST_COUNT.load(core::sync::atomic::Ordering::Acquire);
+    let mut i = 0;
+    while i < cnt {
+        let mask = WHITELIST_MASKS[i].load(core::sync::atomic::Ordering::Relaxed);
+        let net = WHITELIST_NETS[i].load(core::sync::atomic::Ordering::Relaxed);
+        if (src_ip_be & mask) == net {
+            return true;
+        }
+        i += 1;
+    }
+    false
+}
+
 #[no_mangle]
 pub extern "C" fn zero_cisco_init() {
     TOTAL_PKTS.store(0, Ordering::Release);
@@ -43,6 +98,27 @@ pub extern "C" fn zero_cisco_init() {
 pub unsafe extern "C" fn zero_cisco_inspect_frame(frame_ptr: *const u8, frame_len: usize) -> u32 {
     if frame_ptr.is_null() || frame_len < 54 {
         return 0;
+    }
+    // Быстрая проверка IPv4 Whitelist и самообучающегося TTL-профиля
+    let eth_type = u16::from_be_bytes([*frame_ptr.add(12), *frame_ptr.add(13)]);
+    if eth_type == 0x0800 {
+        let ip_ttl = *frame_ptr.add(22);
+        let ip_proto = *frame_ptr.add(23);
+        let frag_field = u16::from_be_bytes([*frame_ptr.add(20), *frame_ptr.add(21)]);
+        let src_ip = u32::from_be_bytes([*frame_ptr.add(26), *frame_ptr.add(27), *frame_ptr.add(28), *frame_ptr.add(29)]);
+        let dst_ip = u32::from_be_bytes([*frame_ptr.add(30), *frame_ptr.add(31), *frame_ptr.add(32), *frame_ptr.add(33)]);
+        if !is_whitelisted_ipv4(src_ip) {
+            let tcp_flags = if ip_proto == 6 { *frame_ptr.add(47) } else { 0 };
+            let flow_hash = ((src_ip as u64) << 32) ^ (dst_ip as u64) ^ 0x9E3779B97F4A7C15u64;
+            let ttl_v = GLOBAL_TTL_GUARD.inspect_and_learn(flow_hash, ip_ttl, frag_field, tcp_flags, frame_len.saturating_sub(54));
+            if ttl_v == TTL_VERDICT_DROP {
+                DROPPED_L3_L4.fetch_add(1, Ordering::Relaxed);
+                return 0;
+            }
+            if ttl_v == TTL_VERDICT_TRAP {
+                return 2; // DECEPTION_TRAP
+            }
+        }
     }
 
     let t0 = rdtsc_start();

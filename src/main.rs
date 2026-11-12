@@ -31,6 +31,8 @@ mod adaptive_gateway;
 mod runtime_guard;
 #[allow(unused_imports)]
 mod hash_gate;
+#[allow(unused_imports)]
+mod ttl_guard;
 
 use core::arch::asm;
 use core::panic::PanicInfo;

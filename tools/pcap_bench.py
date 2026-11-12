@@ -53,12 +53,12 @@ def read_pcap_packets(pcap_path: str, limit: int = 100_000):
     return packets
 
 
-def build_tcp_frame(payload: bytes, dst_port: int = 443) -> bytes:
+def build_tcp_frame(payload: bytes, dst_port: int = 443, ttl: int = 64) -> bytes:
     eth = b"\x00\x11\x22\x33\x44\x55\x66\x77\x88\x99\xaa\xbb\x08\x00"
     ip_total_len = 20 + 20 + len(payload)
     ipv4 = struct.pack(
         "!BBHHHBBH4s4s",
-        0x45, 0, ip_total_len, 1, 0, 64, 6, 0,
+        0x45, 0, ip_total_len, 1, 0, ttl, 6, 0,
         b"\x0a\x00\x00\x02", b"\x0a\x00\x00\x01"
     )
     tcp = struct.pack("!HHIIBBHHH", 54321, dst_port, 1, 1, 0x50, 0x18, 65535, 0, 0)
@@ -71,7 +71,8 @@ def generate_synthetic_mix(count: int = 100_000):
     malformed_short = b"\xff\xff\xff\xff\xff\xff\x00\x00\x00\x00\x00\x00\x08\x00\x45\x00\x00\x10" + os.urandom(20)
     bad_proto = b"\x00\x11\x22\x33\x44\x55\x66\x77\x88\x99\xaa\xbb\x08\x00\x45\x00\x00\x40" + b"\x00" * 56
 
-    pool = [clean_http, clean_tls, clean_http, clean_tls, malformed_short, bad_proto]
+    ttl_spoof_probe = build_tcp_frame(b"GET /admin HTTP/1.1\r\nHost: exchange.local\r\n\r\n", 80, ttl=11)
+    pool = [clean_http, clean_tls, clean_http, clean_tls, ttl_spoof_probe, malformed_short]
     return [random.choice(pool) for _ in range(count)]
 
 
