@@ -1,3 +1,5 @@
+#![no_std]
+#![no_main]
 
 #[inline(always)]
 fn read_active_defense_telemetry(hdr_ptr: *const u8) -> (u64, u32, u32) {
@@ -9,8 +11,6 @@ fn read_active_defense_telemetry(hdr_ptr: *const u8) -> (u64, u32, u32) {
     }
 }
 
-#![no_std]
-#![no_main]
 
 use core::arch::asm;
 
@@ -39,6 +39,52 @@ unsafe fn sys_read(fd: u64, buf: *mut u8, len: usize) -> isize {
 #[inline(always)]
 unsafe fn sys_close(fd: u64) {
     asm!("syscall", in("rax") 3u64, in("rdi") fd, out("rcx") _, out("r11") _, lateout("rax") _, options(nostack));
+}
+
+
+#[inline(always)]
+unsafe fn read_shm_ttl_stats() -> (u64, u64) {
+    let path = b"/dev/shm/zero_ring\0";
+    let mut fd: isize;
+    core::arch::asm!(
+        "syscall",
+        in("rax") 2usize, // sys_open
+        in("rdi") path.as_ptr(),
+        in("rsi") 0usize, // O_RDONLY
+        in("rdx") 0usize,
+        lateout("rax") fd,
+        out("rcx") _, out("r11") _,
+    );
+    if fd < 0 {
+        return (0, 0);
+    }
+    let mut buf = [0u8; 64];
+    let mut n: isize;
+    core::arch::asm!(
+        "syscall",
+        in("rax") 0usize, // sys_read
+        in("rdi") fd as usize,
+        in("rsi") buf.as_mut_ptr(),
+        in("rdx") 64usize,
+        lateout("rax") n,
+        out("rcx") _, out("r11") _,
+    );
+    let mut close_ret: isize;
+    core::arch::asm!(
+        "syscall",
+        in("rax") 3usize, // sys_close
+        in("rdi") fd as usize,
+        lateout("rax") close_ret,
+        out("rcx") _, out("r11") _,
+    );
+    let _ = close_ret;
+    if n >= 48 {
+        let traps = core::ptr::read_unaligned(buf.as_ptr().add(32) as *const u64);
+        let wl = core::ptr::read_unaligned(buf.as_ptr().add(40) as *const u64);
+        (traps, wl)
+    } else {
+        (0, 0)
+    }
 }
 
 #[inline(always)]
@@ -113,6 +159,7 @@ pub unsafe extern "C" fn rust_radar_main(argc: u64) -> u64 {
     let mut learned_pps_thresh: u64 = 2500;
     let mut anomalies_caught: u64 = 0;
 
+    sys_write(1, b"\x1b[2J\x1b[H".as_ptr(), 7);
     loop {
         sys_nanosleep(250);
         let tsc = rdtscp_now();
@@ -137,7 +184,7 @@ pub unsafe extern "C" fn rust_radar_main(argc: u64) -> u64 {
 
         sys_write(1, b"\x1B[2J\x1B[H".as_ptr(), 7);
 
-        let h = b"=================================================================\n  ZERO-TIMING ADAPTIVE RADAR & AI GATEWAY (no_std Rust)\n=================================================================\n  [CPU TSC Clock]        : ";
+        let h = b"\x1b[H=================================================================\n  ZERO-TIMING ADAPTIVE RADAR & AI GATEWAY (no_std Rust)\n=================================================================\n  [CPU TSC Clock]        : ";
         sys_write(1, h.as_ptr(), h.len());
         let s1 = write_u64(tsc, &mut num_buf); sys_write(1, s1.as_ptr(), s1.len());
 
@@ -148,7 +195,7 @@ pub unsafe extern "C" fn rust_radar_main(argc: u64) -> u64 {
 
         let l3 = b" pkts\n  [Instant Speed (PPS)]  : "; sys_write(1, l3.as_ptr(), l3.len());
         let s_pps = write_u64(rx_pps, &mut num_buf); sys_write(1, s_pps.as_ptr(), s_pps.len());
-        sys_write(1, b" pkt/s (Learned Limit: ".as_ptr(), 23);
+        sys_write(1, b" pkt/s   (Learned Limit: ".as_ptr(), 23);
         let s_lim = write_u64(learned_pps_thresh, &mut num_buf); sys_write(1, s_lim.as_ptr(), s_lim.len());
         sys_write(1, b" pkt/s)\n  [Adaptive AI Verdict]  : ".as_ptr(), 33);
 
@@ -157,8 +204,12 @@ pub unsafe extern "C" fn rust_radar_main(argc: u64) -> u64 {
         } else {
             sys_write(1, b"NORMAL (Flow Baseline Learned)".as_ptr(), 30);
         }
-        let l4 = b"\n  [TTL Guard & Whitelist]: Q8.8 EMA Baseline Active | CIDR Bypass: ARMED";
-        sys_write(1, l4.as_ptr(), l4.len());
+        let (shm_traps, shm_wl) = read_shm_ttl_stats();
+        sys_write(1, b"\n  [TTL Guard & Whitelist]: Traps: ".as_ptr(), 35);
+        let st1 = write_u64(shm_traps, &mut num_buf); sys_write(1, st1.as_ptr(), st1.len());
+        sys_write(1, b" | Whitelisted: ".as_ptr(), 16);
+        let st2 = write_u64(shm_wl, &mut num_buf); sys_write(1, st2.as_ptr(), st2.len());
+        sys_write(1, b" | EMA: ARMED      ".as_ptr(), 13);
 
         let l4 = b"\n  [Anomalies Mitigated]  : "; sys_write(1, l4.as_ptr(), l4.len());
         let s_anom = write_u64(anomalies_caught, &mut num_buf); sys_write(1, s_anom.as_ptr(), s_anom.len());
