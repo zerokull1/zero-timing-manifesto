@@ -94,3 +94,29 @@ pub unsafe fn branchless_select_u64(cond_nonzero: u64, val_if_true: u64, val_if_
         if cond_nonzero != 0 { val_if_true } else { val_if_false }
     }
 }
+
+/// Стерильное чтение 64-байтного заголовка из DDR с немедленным сбросом кэш-линии обратно в ОЗУ
+/// (Zero Cache-Pollution: prefetchnta + read + clflushopt / ARM64 dc civac)
+#[inline(always)]
+pub unsafe fn sterile_read_and_evict_64b(src_ddr: *const u64) -> [u64; 8] {
+    #[cfg(target_arch = "x86_64")]
+    {
+        asm!("prefetchnta [{p}]", p = in(reg) src_ddr, options(nostack));
+        let line = core::ptr::read_unaligned(src_ddr as *const [u64; 8]);
+        asm!("clflushopt [{p}]", p = in(reg) src_ddr, options(nostack));
+        line
+    }
+
+    #[cfg(target_arch = "aarch64")]
+    {
+        asm!("prfm pldl1strm, [{p}]", p = in(reg) src_ddr, options(nostack));
+        let line = core::ptr::read_unaligned(src_ddr as *const [u64; 8]);
+        asm!("dc civac, {p}", p = in(reg) src_ddr, options(nostack));
+        line
+    }
+
+    #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
+    {
+        core::ptr::read_unaligned(src_ddr as *const [u64; 8])
+    }
+}
