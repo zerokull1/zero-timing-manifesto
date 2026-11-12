@@ -128,3 +128,6 @@ pub unsafe extern "C" fn zero_hft_on_market_frame(
 fn panic(_info: &core::panic::PanicInfo) -> ! {
     loop {}
 }
+
+#[no_mangle]
+pub extern "C" fn rust_eh_personality() {}
