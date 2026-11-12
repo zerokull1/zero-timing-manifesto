@@ -24,6 +24,20 @@ flowchart LR
     RING -. "Zero-Alloc Read" .-> TUI["TUI Radar & Watchdog"]
 ```
 
+## Active Security, Deception & Mutation Pipeline
+
+```mermaid
+flowchart TD
+    IN["Incoming Traffic / L7 Payload"] --> GATE["1. Constant-Time Hash Gate & L7 Shield<br/>(Zero-Timing Side-Channel Resistance)"]
+    
+    GATE -- "Verified Clean Flow" --> ENC["Encrypted / Isolated Memory Ring<br/>(Zero-Copy Protected Handoff)"]
+    GATE -- "Anomaly / Probe Detected" --> TRAP{"2. Threat & Entropy Classifier<br/>(CPU SWAR + GPU Shannon IAT)"}
+    
+    TRAP -- "Scanner / Recon Bot" --> HONEY["Deception Trap / Tarpit Isolation<br/>(Synthetic Decoy Response & Sinkhole)"]
+    TRAP -- "DPI Evasion / Polymorphic Probe" --> MUT["Dynamic State Mutation (MTD)<br/>(Rolling Hash Seeds & Signature Rotation)"]
+    TRAP -- "Critical Flood / Exploit" --> DROP["Hardware XDP Drop + DDR Flight Recorder<br/>(Instant Mitigation & Forensic Dump)"]
+```
+
 ## 1. Architectural Separation: Inline Fast-Path vs. Sideband & R&D
 
 * **Inline CPU Fast-Path (`27–36 cycles/pkt`):** Branchless `x86_64` ASM L7 DPI (`cmov`), zero-copy `AF_XDP`, and `XDP` kernel ingress filtering make pass/drop decisions in nanoseconds with zero heap allocations.
