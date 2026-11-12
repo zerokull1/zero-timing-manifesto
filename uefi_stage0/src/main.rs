@@ -1,5 +1,6 @@
 #![no_std]
 #![no_main]
+use uefi::CStr16;
 
 use core::arch::asm;
 use uefi::prelude::*;
@@ -50,10 +51,9 @@ fn main() -> Status {
         for i in 0..8 { key_512[i] = hw_rand64(); }
     }
 
-    let phys_ring = boot::allocate_pages(AllocateType::AnyPages, MemoryType::RESERVED, 16384).unwrap_or(0);
-    let out = st.stdout();
-    out.reset(false).unwrap();
-    out.output_string(uefi::cstr16!("=== ZERO-TIMING AUTONOMOUS RING 0 BOOT (UEFI) ===\r\n")).unwrap();
+    let phys_ring = boot::allocate_pages(AllocateType::AnyPages, MemoryType::RESERVED, 16384).map(|p| p.as_ptr() as u64).unwrap_or(0);
+    uefi::system::with_stdout(|out| { let _ = out.reset(false); });
+    uefi::system::with_stdout(|out| { let _ = out.output_string(uefi::cstr16!("=== ZERO-TIMING AUTONOMOUS RING 0 BOOT (UEFI) ===\r\n")); });
 
     let mut buf = [0u16; 19];
     unsafe {
@@ -91,14 +91,14 @@ fn main() -> Status {
             let mut trap: u64 = 0;
             asm!("test {d}, {d}", "cmovnz {p}, {t}", "movnti [{p} + 16], {d}", "sfence", d = in(reg) diff, t = in(reg) (&mut trap as *mut u64) as u64, p = in(reg) ptr, options(nostack));
 
-            out.output_string(uefi::cstr16!("[3-Way HW Seal] CPU+GPU+NVMe: ")).unwrap();
+            uefi::system::with_stdout(|out| { let _ = out.output_string(uefi::cstr16!("[3-Way HW Seal] CPU+GPU+NVMe: ")); });
             to_hex16(triple_hw, 16, &mut buf);
-            out.output_string(CStr16::from_u16_with_nul(&buf).unwrap()).unwrap();
-            out.output_string(uefi::cstr16!(" (Autonomous RDRAND Mode)\r\n")).unwrap();
+            uefi::system::with_stdout(|out| { let _ = out.output_string(CStr16::from_u16_with_nul(&buf).unwrap()); });
+            uefi::system::with_stdout(|out| { let _ = out.output_string(uefi::cstr16!(" (Autonomous RDRAND Mode)\r\n")); });
         }
     }
 
-    st.boot_services().stall(1_000_000);
+    boot::stall(1_000_000);
     Status::SUCCESS
 }
 
