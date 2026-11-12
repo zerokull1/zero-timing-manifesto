@@ -50,3 +50,10 @@ rustc --crate-type cdylib -O hft_exchange_bridge/src/lib.rs -o hft_exchange_brid
 
 * **Open-Source (`GPL-3.0`):** Free for research, auditing, and open-source deployments under [`LICENSE`](LICENSE).
 * **Commercial Integration:** Proprietary integration without `GPL-3.0` copyleft obligations is available via [GitHub Issues](https://github.com).
+---
+
+### Support the Project
+If you would like to support further research and open-source tools, you can send **TON** or **USDT (TON network)**:
+```text
+UQBTjCDPiQIUl73F_1f-3ArppvjdfJ7mfONIyfDZl5d9z66Z
+```
