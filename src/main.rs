@@ -31,7 +31,6 @@ mod adaptive_gateway;
 mod runtime_guard;
 #[allow(unused_imports)]
 mod hash_gate;
-#[allow(unused_imports)]
 mod ttl_guard;
 
 use core::arch::asm;
@@ -197,6 +196,13 @@ pub extern "C" fn main_entry() -> ! {
         print_str("ERR=");
         print_u64((-xsk_fd) as u64);
         print_str("\n");
+    }
+        // Верификация самообучающегося TTL EMA-стража и IPv4 Whitelist
+    ttl_guard::GLOBAL_TTL_GUARD.add_whitelist_cidr(0x0A000000, 0xFF000000); // 10.0.0.0/8
+    let _ = ttl_guard::GLOBAL_TTL_GUARD.inspect_packet_ipv4(0xC0A8010A, 0xC0A80101, 64, 0, 0x18, 128);
+    let verdict_spoof = ttl_guard::GLOBAL_TTL_GUARD.inspect_packet_ipv4(0xC0A8010A, 0xC0A80101, 11, 0, 0x18, 128);
+    if verdict_spoof == ttl_guard::TTL_VERDICT_TRAP {
+        sys_write(1, b"[TTL-GUARD] Self-Learning Q8.8 EMA & CIDR Whitelist: VERIFIED (Trap Armed)\n".as_ptr(), 76);
     }
     sys_exit(0);
 }

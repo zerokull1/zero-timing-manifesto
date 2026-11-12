@@ -6,6 +6,7 @@ Zero-Timing Manifesto v1.1.0-beta — Zero-Copy Python SDK (ctypes / mmap)
 import ctypes
 import mmap
 import os
+import socket
 import struct
 
 ZERORING_MAGIC = 0x5A45524F52494E47
@@ -63,6 +64,19 @@ class ZeroRingClient:
             mm.write(struct.pack("<IIH", mtd_epoch, flags, ent_x100))
             mm.flush()
             mm.close()
+
+
+    def add_whitelist_cidr(self, cidr: str) -> bool:
+        """Добавляет доверенную подсеть (например, 10.0.0.0/8) в lock-free IPv4 Whitelist."""
+        if not self.lib:
+            raise RuntimeError("C-ABI shared library (.so) not loaded")
+        ip_str, prefix_str = cidr.split("/")
+        prefix = int(prefix_str)
+        net_be = struct.unpack("!I", socket.inet_aton(ip_str))
+        mask_be = (0xFFFFFFFF << (32 - prefix)) & 0xFFFFFFFF if prefix > 0 else 0
+        self.lib.zero_cisco_add_whitelist.argtypes = [ctypes.c_uint32, ctypes.c_uint32]
+        self.lib.zero_cisco_add_whitelist.restype = ctypes.c_uint32
+        return self.lib.zero_cisco_add_whitelist(net_be, mask_be) == 1
 
     def inspect_packet(self, payload: bytes) -> str:
         if not self.lib:
