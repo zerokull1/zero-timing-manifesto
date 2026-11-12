@@ -9,6 +9,8 @@ mod l7_shield;
 mod af_xdp_engine;
 mod nic_bar0_pmd;
 mod ring_abi;
+mod flow_table;
+mod arch_hal;
 
 use core::arch::asm;
 use core::panic::PanicInfo;
