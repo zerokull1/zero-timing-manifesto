@@ -1,6 +1,7 @@
 #![no_std]
 #![no_main]
 
+mod pci_nic;
 use core::arch::asm;
 
 type EfiStatus = usize;
@@ -101,6 +102,11 @@ unsafe fn serial_write_bytes(s: &[u8]) {
     }
 }
 
+unsafe fn serial_write_hex8(v: u8) {
+    let h = b"0123456789ABCDEF";
+    serial_write_bytes(&[h[(v >> 4) as usize], h[(v & 0xF) as usize]]);
+}
+
 unsafe fn serial_write_u64(mut n: u64) {
     let mut buf = [0u8; 20];
     if n == 0 {
@@ -173,6 +179,14 @@ pub extern "efiapi" fn efi_main(image_handle: EfiHandle, system_table: *const Ef
         serial_write_bytes(b"==============================================================\r\n");
         serial_write_bytes(b"[OK] ExitBootServices() succeeded! Firmware drivers terminated.\r\n");
         serial_write_bytes(b"[OK] Interrupts masked (cli). Pure Polling Mode engaged.\r\n");
+        if let Some((_bar0, mac, _st)) = pci_nic::probe_intel_nic() {
+            serial_write_bytes(b"[NIC] Intel 82540EM BAR0 Armed | MAC: ");
+            for i in 0..6 {
+                serial_write_hex8(mac[i]);
+                if i < 5 { serial_write_bytes(b":"); }
+            }
+            serial_write_bytes(b"\r\n");
+        }
 
         // Боевой прогон 1 000 000 пакетов прямо в голом Ring 0
         let batch = 1_000_000u64;
