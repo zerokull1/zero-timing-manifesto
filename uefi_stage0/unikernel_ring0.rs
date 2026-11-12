@@ -195,10 +195,12 @@ pub extern "efiapi" fn efi_main(image_handle: EfiHandle, system_table: *const Ef
         serial_write_bytes(b" cycles\r\n");
         serial_write_bytes(b"==============================================================\r\n");
 
-        // Чистое ACPI-выключение QEMU
-        asm!("out dx, ax", in("dx") 0x604u16, in("ax") 0x2000u16, options(nostack, nomem));
+        // Штатный сброс через порт 0x64 (с флагом QEMU -no-reboot мгновенно закрывает VM)
+        outb(0x64, 0xFE);
+        loop {
+            asm!("cli; hlt", options(nostack, nomem));
+        }
     }
-    0
 }
 
 #[panic_handler]
