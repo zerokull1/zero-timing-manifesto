@@ -59,6 +59,8 @@ make -C gpu_offload && ./gpu_offload/vk_iat_bridge
 │   ├── smp_stress.rs    # Zero-libc sys_clone multi-core matrix stress test (10M pkts)
 │   └── tsc.rs           # Serialized hardware cycle counter (rdtsc / rdtscp + lfence)
 ├── docs/                # Architectural notes, register maps, and deployment guides
+├── cisco_daq_plugin/    # Zero-copy no_std C-ABI fast-path library for Cisco DAQ / Snort 3 / DPDK
+├── ring_reader/         # Cross-platform zero-dependency ZERORING reader (Linux & Windows)
 ├── gpu_offload/         # Vulkan Compute SPIR-V kernel & Zero-Copy DDR bridge (/dev/shm)
 ├── xdp_shield/          # Native Linux kernel XDP L3/L4/L7 SWAR filter & XSKMAP redirect
 ├── uefi_stage0/         # Stage 0 UEFI bootloader, PCIe scanner & Anti-Morse MSR Power Lock (0x199)
@@ -81,6 +83,15 @@ taskset -c 0 ./target/release/zero_project
 > **Note:** Bare-metal Ring 0 routines (`enumerate_pcie_bus_cold_boot`, `CR0`/`CR4` writes, `cli`, PCIe `0xCF8`/`0xCFC` I/O) require kernel-space or UEFI execution and will trigger a General Protection Fault (`#GP`) in standard Linux User Space.
 
 ---
+
+
+## 🔌 Vendor & Cross-Platform Integration (`Cisco DAQ` / `Windows` / `Linux`)
+
+* **Cisco Firepower / Snort 3 / IOS-XE (`cisco_daq_plugin/`):** Compiles into a standalone `no_std` shared library (`libzero_cisco_daq.so`) with a clean C header (`zero_cisco_daq.h`) for zero-copy L3/L4/L7 inline packet verdicts (`36–60` CPU cycles):
+  ```bash
+  rustc --crate-type=cdylib -O -C panic=abort -C lto=yes cisco_daq_plugin/lib.rs -o cisco_daq_plugin/libzero_cisco_daq.so
+  ```
+* **OS-Persistent DDR Ring (`ZERORING` ABI):** `uefi_stage0` reserves `64 MB` of `EfiReservedMemory` prior to OS boot (`Windows` or `Linux`). Read live telemetry lock-free via `ring_reader/zeroring_reader.rs`.
 
 ## 🔗 Related Research
 
