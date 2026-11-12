@@ -80,47 +80,47 @@ struct BpfMapElemStruct {
 }
 
 #[inline(always)]
-unsafe fn sys_socket(domain: usize, ty: usize, proto: usize) -> isize {
+unsafe fn sys_socket(domain: usize, ty: usize, proto: usize) -> isize { unsafe {
     let ret: isize;
     asm!("syscall", in("rax") 41usize, in("rdi") domain, in("rsi") ty, in("rdx") proto, lateout("rax") ret, out("rcx") _, out("r11") _, options(nostack));
     ret
-}
+}}
 
 #[inline(always)]
-unsafe fn sys_setsockopt(fd: usize, level: usize, optname: usize, optval: *const u8, optlen: usize) -> isize {
+unsafe fn sys_setsockopt(fd: usize, level: usize, optname: usize, optval: *const u8, optlen: usize) -> isize { unsafe {
     let ret: isize;
     asm!("syscall", in("rax") 54usize, in("rdi") fd, in("rsi") level, in("rdx") optname, in("r10") optval, in("r8") optlen, lateout("rax") ret, out("rcx") _, out("r11") _, options(nostack));
     ret
-}
+}}
 
 #[inline(always)]
-unsafe fn sys_getsockopt(fd: usize, level: usize, optname: usize, optval: *mut u8, optlen: *mut u32) -> isize {
+unsafe fn sys_getsockopt(fd: usize, level: usize, optname: usize, optval: *mut u8, optlen: *mut u32) -> isize { unsafe {
     let ret: isize;
     asm!("syscall", in("rax") 55usize, in("rdi") fd, in("rsi") level, in("rdx") optname, in("r10") optval, in("r8") optlen, lateout("rax") ret, out("rcx") _, out("r11") _, options(nostack));
     ret
-}
+}}
 
 #[inline(always)]
-unsafe fn sys_bind(fd: usize, addr: *const u8, addrlen: usize) -> isize {
+unsafe fn sys_bind(fd: usize, addr: *const u8, addrlen: usize) -> isize { unsafe {
     let ret: isize;
     asm!("syscall", in("rax") 49usize, in("rdi") fd, in("rsi") addr, in("rdx") addrlen, lateout("rax") ret, out("rcx") _, out("r11") _, options(nostack));
     ret
-}
+}}
 
 #[inline(always)]
-unsafe fn sys_bpf(cmd: usize, attr: *const BpfAttrMapElem, size: usize) -> isize {
+unsafe fn sys_bpf(cmd: usize, attr: *const BpfAttrMapElem, size: usize) -> isize { unsafe {
     let ret: isize;
     asm!("syscall", in("rax") 321usize, in("rdi") cmd, in("rsi") attr, in("rdx") size, lateout("rax") ret, out("rcx") _, out("r11") _, options(nostack));
     ret
-}
+}}
 
 #[inline(always)]
-unsafe fn sys_close(fd: usize) {
+unsafe fn sys_close(fd: usize) { unsafe {
     asm!("syscall", in("rax") 3usize, in("rdi") fd, lateout("rax") _, out("rcx") _, out("r11") _, options(nostack));
-}
+}}
 
 #[inline(always)]
-unsafe fn sys_mmap(addr: usize, len: usize, prot: usize, flags: usize, fd: isize, offset: isize) -> *mut u8 {
+unsafe fn sys_mmap(addr: usize, len: usize, prot: usize, flags: usize, fd: isize, offset: isize) -> *mut u8 { unsafe {
     let ret: *mut u8;
     asm!(
         "syscall",
@@ -137,7 +137,7 @@ unsafe fn sys_mmap(addr: usize, len: usize, prot: usize, flags: usize, fd: isize
         options(nostack)
     );
     ret
-}
+}}
 
 /// Запускает полный цикл Zero-Copy приёма: Fill Ring -> XSKMAP -> Rx Ring -> ASM L7 DPI
 pub fn run_live_xdp_zerocopy_rx(ifindex: u32, xsk_map_fd: i32) -> (isize, usize, u32, u8) {
@@ -276,13 +276,13 @@ struct PollFd {
 }
 
 #[inline(always)]
-unsafe fn sys_poll(fds: *mut PollFd, nfds: usize, timeout_ms: i32) -> isize {
+unsafe fn sys_poll(fds: *mut PollFd, nfds: usize, timeout_ms: i32) -> isize { unsafe {
     let ret: isize;
     asm!("syscall", in("rax") 7usize, in("rdi") fds, in("rsi") nfds, in("rdx") timeout_ms, lateout("rax") ret, out("rcx") _, out("r11") _, options(nostack));
     ret
-}
+}}
 
-pub unsafe fn open_pinned_xsk_map() -> i32 {
+pub unsafe fn open_pinned_xsk_map() -> i32 { unsafe {
     let path = b"/sys/fs/bpf/zero_xsk_map\0";
     let attr = BpfAttrObj {
         obj: BpfObjStruct {
@@ -294,7 +294,7 @@ pub unsafe fn open_pinned_xsk_map() -> i32 {
     let fd: isize;
     asm!("syscall", in("rax") 321usize, in("rdi") 7usize, in("rsi") &attr, in("rdx") core::mem::size_of::<BpfAttrObj>(), lateout("rax") fd, out("rcx") _, out("r11") _, options(nostack));
     fd as i32
-}
+}}
 
 pub fn verify_af_xdp_subsystem(ifindex: u32) -> (isize, usize) {
     let (fd, ptr, _, _) = run_live_xdp_zerocopy_rx(ifindex, -1);

@@ -35,7 +35,7 @@ pub unsafe fn track_flow_lockfree(
     flow_hash: u64,
     pkt_len: u64,
     now_tsc: u64,
-) -> u64 {
+) -> u64 { unsafe {
     let idx = (flow_hash as usize) & (FLOW_TABLE_BUCKETS - 1);
     let slot = &*table_ptr.add(idx);
 
@@ -64,4 +64,4 @@ pub unsafe fn track_flow_lockfree(
     }
 
     0
-}
+}}

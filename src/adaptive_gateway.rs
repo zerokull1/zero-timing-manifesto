@@ -31,7 +31,7 @@ impl AdaptiveDdosGateway {
     /// Безветвящийся ассемблерный вердикт шлюза (cmova) на основе спектральной энтропии потока:
     /// Возвращает: 0 = PASS, 1 = QUARANTINE (подозрительный всплеск), 2 = HARD DROP (атака)
     #[inline(always)]
-    pub unsafe fn evaluate_flow_asm(&mut self, flow_entropy_q16: u32, packet_score: u32) -> u32 {
+    pub unsafe fn evaluate_flow_asm(&mut self, flow_entropy_q16: u32, packet_score: u32) -> u32 { unsafe {
         let mut verdict: u32 = 0;
         let thresh = self.entropy_threshold_q16;
         let hard_thresh = thresh.wrapping_add(32_768); // +0.50 бита сверх порога -> мгновенный DROP
@@ -78,5 +78,5 @@ impl AdaptiveDdosGateway {
 
         let _ = packet_score;
         verdict
-    }
+    }}
 }

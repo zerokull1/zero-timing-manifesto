@@ -21,7 +21,7 @@ pub struct ZeroRingHeader {
 
 impl ZeroRingHeader {
     #[inline(always)]
-    pub unsafe fn init_at(base_addr: usize, cores: u32) -> &'static mut Self {
+    pub unsafe fn init_at(base_addr: usize, cores: u32) -> &'static mut Self { unsafe {
         let hdr = &mut *(base_addr as *mut Self);
         hdr.magic = ZERO_RING_MAGIC;
         hdr.version = 1;
@@ -32,7 +32,7 @@ impl ZeroRingHeader {
         hdr.blocked_l7_count = AtomicU64::new(0);
         hdr.last_entropy_q16 = 0;
         hdr
-    }
+    }}
 
     #[inline(always)]
     pub fn is_valid(&self) -> bool {

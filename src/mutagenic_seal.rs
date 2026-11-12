@@ -28,7 +28,7 @@ impl MutagenicKey512 {
     /// Векторное запечатывание 64 байт (512 бит) в DDR:
     /// Использует AVX2 vmovntdq при 32-байтном выравнивании dst_ddr (без риска #GP) и movnti как откат.
     #[inline(always)]
-    pub unsafe fn seal_block_64b(&mut self, src: &[u64; 8], dst_ddr: *mut u64, tsc_now: u64) {
+    pub unsafe fn seal_block_64b(&mut self, src: &[u64; 8], dst_ddr: *mut u64, tsc_now: u64) { unsafe {
         self.mutate_step(tsc_now);
 
         #[cfg(target_feature = "avx2")]
@@ -60,11 +60,11 @@ impl MutagenicKey512 {
         }
         #[cfg(target_arch = "x86_64")]
         asm!("sfence", options(nostack));
-    }
+    }}
 
     /// 1-тактовая безветвящаяся ловушка самоуничтожения (cmovnz + movnti)
     #[inline(always)]
-    pub unsafe fn verify_or_vaporize(&mut self, observed_sig: u64, trap_sink: *mut u64) -> u64 {
+    pub unsafe fn verify_or_vaporize(&mut self, observed_sig: u64, trap_sink: *mut u64) -> u64 { unsafe {
         let anomaly = observed_sig ^ self.hw_anchor;
         let ptr = self.state.as_mut_ptr() as u64;
         #[cfg(target_arch = "x86_64")]
@@ -84,5 +84,5 @@ impl MutagenicKey512 {
             *word &= mask;
         }
         anomaly
-    }
+    }}
 }

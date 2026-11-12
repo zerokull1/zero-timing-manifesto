@@ -1,1 +1,5 @@
 target/
+*.so
+ring_reader/zero_tui_radar
+ring_reader/zeroring_reader
+uefi_stage0/Cargo.lock

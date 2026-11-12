@@ -15,7 +15,7 @@ const MPOL_BIND: u64       = 2;
 
 /// Прямой no_std системный вызов mmap (x86_64)
 #[inline(always)]
-unsafe fn raw_sys_mmap(len: usize, flags: u64) -> isize {
+unsafe fn raw_sys_mmap(len: usize, flags: u64) -> isize { unsafe {
     let ret: isize;
     asm!(
         "syscall",
@@ -32,11 +32,11 @@ unsafe fn raw_sys_mmap(len: usize, flags: u64) -> isize {
         options(nostack)
     );
     ret
-}
+}}
 
 /// Жёсткая привязка диапазона памяти к конкретному NUMA-узлу (sys_mbind, MPOL_BIND)
 #[inline(always)]
-pub unsafe fn bind_memory_to_numa_node(ptr: *mut u8, len: usize, numa_node: u32) -> bool {
+pub unsafe fn bind_memory_to_numa_node(ptr: *mut u8, len: usize, numa_node: u32) -> bool { unsafe {
     let nodemask: u64 = 1u64 << (numa_node & 63);
     let ret: isize;
     asm!(
@@ -54,12 +54,12 @@ pub unsafe fn bind_memory_to_numa_node(ptr: *mut u8, len: usize, numa_node: u32)
         options(nostack)
     );
     ret == 0
-}
+}}
 
 /// Выделение стерильной памяти на огромных страницах 2MB (Zero-TLB-Miss) с привязкой к NUMA Node 0
 /// Возвращает (указатель, true если выделены реальные 2MB HugePages, false если откат на 4KB LOCKED)
 #[inline(always)]
-pub unsafe fn alloc_huge_numa_ring(size_bytes: usize, numa_node: u32) -> (*mut u8, bool) {
+pub unsafe fn alloc_huge_numa_ring(size_bytes: usize, numa_node: u32) -> (*mut u8, bool) { unsafe {
     let aligned_len = (size_bytes + 0x1F_FFFF) & !0x1F_FFFF;
 
     // 1. Пробуем выделить огромные страницы 2 МБ + заблокировать в физической ОЗУ (MAP_LOCKED)
@@ -79,4 +79,4 @@ pub unsafe fn alloc_huge_numa_ring(size_bytes: usize, numa_node: u32) -> (*mut u
     }
 
     (core::ptr::null_mut(), false)
-}
+}}

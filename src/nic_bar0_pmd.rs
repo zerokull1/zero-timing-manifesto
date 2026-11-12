@@ -24,14 +24,14 @@ pub struct HardwareRxDesc {
 }
 
 #[inline(always)]
-unsafe fn mmio_read32(bar0_virt: usize, offset: usize) -> u32 {
+unsafe fn mmio_read32(bar0_virt: usize, offset: usize) -> u32 { unsafe {
     core::ptr::read_volatile((bar0_virt + offset) as *const u32)
-}
+}}
 
 #[inline(always)]
-unsafe fn mmio_write32(bar0_virt: usize, offset: usize, val: u32) {
+unsafe fn mmio_write32(bar0_virt: usize, offset: usize, val: u32) { unsafe {
     core::ptr::write_volatile((bar0_virt + offset) as *mut u32, val);
-}
+}}
 
 /// Прямой бездрайверный опрос аппаратного кольца NIC через MMIO BAR0 (OS-Agnostic PMD)
 /// Работает одинаково поверх UEFI, Linux (VFIO/UIO) и Windows (WinRing0/Kernel).
@@ -42,7 +42,7 @@ pub unsafe fn poll_nic_bar0_ring(
     ring_mask: u32,
     sw_tail: &mut u32,
     ddr_siem_slot: *mut u32,
-) -> u32 {
+) -> u32 { unsafe {
     let idx = (*sw_tail + 1) & ring_mask;
     let desc_ptr = ring_base.add(idx as usize);
     let status = core::ptr::read_volatile(&(*desc_ptr).status);
@@ -88,4 +88,4 @@ pub unsafe fn poll_nic_bar0_ring(
     }
 
     pkt_len
-}
+}}

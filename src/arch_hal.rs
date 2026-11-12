@@ -4,7 +4,7 @@ use core::arch::asm;
 
 /// Чтение аппаратного счётчика тактов с барьером сериализации (x86_64 + ARM64)
 #[inline(always)]
-pub unsafe fn read_hw_cycles_serialized() -> u64 {
+pub unsafe fn read_hw_cycles_serialized() -> u64 { unsafe {
     #[cfg(target_arch = "x86_64")]
     {
         let lo: u32;
@@ -24,11 +24,11 @@ pub unsafe fn read_hw_cycles_serialized() -> u64 {
     {
         0
     }
-}
+}}
 
 /// Нетемпоральная запись 64-битного слова в DDR в обход кэша L1/L2 (x86_64 movnti / ARM64 stnp)
 #[inline(always)]
-pub unsafe fn stream_write_ddr_u64(dst: *mut u64, val: u64) {
+pub unsafe fn stream_write_ddr_u64(dst: *mut u64, val: u64) { unsafe {
     #[cfg(target_arch = "x86_64")]
     {
         asm!(
@@ -55,11 +55,11 @@ pub unsafe fn stream_write_ddr_u64(dst: *mut u64, val: u64) {
     {
         core::ptr::write_volatile(dst, val);
     }
-}
+}}
 
 /// Безветвящийся выбор значения (x86_64 cmov / ARM64 csel)
 #[inline(always)]
-pub unsafe fn branchless_select_u64(cond_nonzero: u64, val_if_true: u64, val_if_false: u64) -> u64 {
+pub unsafe fn branchless_select_u64(cond_nonzero: u64, val_if_true: u64, val_if_false: u64) -> u64 { unsafe {
     #[cfg(target_arch = "x86_64")]
     {
         let mut res = val_if_false;
@@ -93,12 +93,12 @@ pub unsafe fn branchless_select_u64(cond_nonzero: u64, val_if_true: u64, val_if_
     {
         if cond_nonzero != 0 { val_if_true } else { val_if_false }
     }
-}
+}}
 
 /// Стерильное чтение 64-байтного заголовка из DDR с немедленным сбросом кэш-линии обратно в ОЗУ
 /// (Zero Cache-Pollution: prefetchnta + read + clflushopt / ARM64 dc civac)
 #[inline(always)]
-pub unsafe fn sterile_read_and_evict_64b(src_ddr: *const u64) -> [u64; 8] {
+pub unsafe fn sterile_read_and_evict_64b(src_ddr: *const u64) -> [u64; 8] { unsafe {
     #[cfg(target_arch = "x86_64")]
     {
         asm!("prefetchnta [{p}]", p = in(reg) src_ddr, options(nostack));
@@ -119,4 +119,4 @@ pub unsafe fn sterile_read_and_evict_64b(src_ddr: *const u64) -> [u64; 8] {
     {
         core::ptr::read_unaligned(src_ddr as *const [u64; 8])
     }
-}
+}}

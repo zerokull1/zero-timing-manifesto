@@ -1,3 +1,4 @@
+#![deny(unsafe_op_in_unsafe_fn)]
 #![no_std]
 #![no_main]
 
@@ -11,6 +12,7 @@ mod af_xdp_engine;
 mod nic_bar0_pmd;
 #[allow(unused_imports)]
 mod ring_abi;
+mod abi_check;
 #[allow(unused_imports)]
 mod flow_table;
 #[allow(unused_imports)]

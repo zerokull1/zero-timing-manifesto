@@ -60,7 +60,7 @@ static mut SERVER_CORE_MATRIX: [CoreStorage; MAX_SERVER_CORES] = [CoreStorage {
 static mut NVME_OFFLOAD_DMA: NvmeOffloadPage = NvmeOffloadPage { slots: [0; 1024] };
 
 #[inline(always)]
-unsafe fn pci_config_read32(bus: u32, dev: u32, func: u32, offset: u32) -> u32 {
+unsafe fn pci_config_read32(bus: u32, dev: u32, func: u32, offset: u32) -> u32 { unsafe {
     let address: u32 = 0x8000_0000 | (bus << 16) | (dev << 11) | (func << 8) | (offset & 0xFC);
     let mut value: u32;
     asm!(
@@ -68,18 +68,18 @@ unsafe fn pci_config_read32(bus: u32, dev: u32, func: u32, offset: u32) -> u32 {
         in("eax") address, lateout("eax") value, out("dx") _, options(nostack, nomem)
     );
     value
-}
+}}
 
 #[inline(always)]
-unsafe fn pci_config_write32(bus: u32, dev: u32, func: u32, offset: u32, value: u32) {
+unsafe fn pci_config_write32(bus: u32, dev: u32, func: u32, offset: u32, value: u32) { unsafe {
     let address: u32 = 0x8000_0000 | (bus << 16) | (dev << 11) | (func << 8) | (offset & 0xFC);
     asm!(
         "mov dx, 0xCF8", "out dx, eax", "mov dx, 0xCFC", "mov eax, {val:e}", "out dx, eax",
         in("eax") address, val = in(reg) value, out("dx") _, options(nostack, nomem)
     );
-}
+}}
 
-pub unsafe fn enumerate_pcie_bus_cold_boot() {
+pub unsafe fn enumerate_pcie_bus_cold_boot() { unsafe {
     let mut bus: u32 = 0;
     while bus < 16 {
         let mut dev: u32 = 0;
@@ -108,7 +108,7 @@ pub unsafe fn enumerate_pcie_bus_cold_boot() {
         }
         bus += 1;
     }
-}
+}}
 
 #[inline(always)]
 pub unsafe fn shield_inline_normalizer(
@@ -118,7 +118,7 @@ pub unsafe fn shield_inline_normalizer(
     storage: *mut CoreStorage,
     gpu_bar0: u64,
     nvme_bar0: u64,
-) -> u8 {
+) -> u8 { unsafe {
     let flags = core::ptr::read_volatile(&(*pkt_ptr).tcp_flags);
     let ttl = core::ptr::read_volatile(&(*pkt_ptr).ttl);
     let mut normalized_mask: u8 = 0;
@@ -165,7 +165,7 @@ pub unsafe fn shield_inline_normalizer(
     core::ptr::write_volatile(gpu_db, 1);
 
     normalized_mask
-}
+}}
 
 #[repr(C, align(4096))]
 struct MockMmioPage([u8; 0x3000]);
@@ -212,14 +212,14 @@ pub fn simulate_shield_rack_benchmark() -> (u64, u64, u8, u8) {
 
 #[allow(suspicious_runtime_symbol_definitions)]
 #[no_mangle]
-pub unsafe extern "C" fn memset(dest: *mut core::ffi::c_void, val: i32, count: usize) -> *mut core::ffi::c_void {
+pub unsafe extern "C" fn memset(dest: *mut core::ffi::c_void, val: i32, count: usize) -> *mut core::ffi::c_void { unsafe {
     asm!("cld", "rep stosb", inout("rdi") dest => _, in("al") val as u8, inout("rcx") count => _, options(nostack));
     dest
-}
+}}
 
 #[allow(suspicious_runtime_symbol_definitions)]
 #[no_mangle]
-pub unsafe extern "C" fn memcpy(dest: *mut core::ffi::c_void, src: *const core::ffi::c_void, count: usize) -> *mut core::ffi::c_void {
+pub unsafe extern "C" fn memcpy(dest: *mut core::ffi::c_void, src: *const core::ffi::c_void, count: usize) -> *mut core::ffi::c_void { unsafe {
     asm!("cld", "rep movsb", inout("rdi") dest => _, inout("rsi") src => _, inout("rcx") count => _, options(nostack));
     dest
-}
+}}

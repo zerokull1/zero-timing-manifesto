@@ -17,7 +17,7 @@ const SIG_TE_CHUNKED: u64 = u64::from_le_bytes(*b"chunked\r");
 
 /// Аппаратная L7-инспекция на прямом x86_64 ассемблере (без ветвлений и обращений к стеку).
 #[inline(always)]
-pub unsafe fn inspect_l7_payload_asm(payload: *const u8, len: usize, dst_port: u16) -> L7Verdict {
+pub unsafe fn inspect_l7_payload_asm(payload: *const u8, len: usize, dst_port: u16) -> L7Verdict { unsafe {
     if len < 16 || payload.is_null() {
         return L7Verdict::BlockedNullPayload;
     }
@@ -72,7 +72,7 @@ pub unsafe fn inspect_l7_payload_asm(payload: *const u8, len: usize, dst_port: u
     }
 
     core::mem::transmute(verdict_code as u8)
-}
+}}
 
 /// Бенчмарк ассемблерного L7-фильтра на TLS 1.3 ClientHello и атаке HTTP Smuggling
 pub fn benchmark_l7_swar() -> (u64, u8) {
@@ -95,7 +95,7 @@ pub fn benchmark_l7_swar() -> (u64, u8) {
 /// Проверяет Long Header (bit 7 = 1), валидность версии (v1/v2) и длину DCID/SCID без ветвлений.
 /// Возвращает 0 (Clean QUIC) или 0x04 (BlockedQuicAnomaly).
 #[inline(always)]
-pub unsafe fn inspect_quic_l7_asm(payload_ptr: *const u8, len: usize) -> u64 {
+pub unsafe fn inspect_quic_l7_asm(payload_ptr: *const u8, len: usize) -> u64 { unsafe {
     if len < 16 {
         return 0;
     }
@@ -143,4 +143,4 @@ pub unsafe fn inspect_quic_l7_asm(payload_ptr: *const u8, len: usize) -> u64 {
     );
 
     verdict
-}
+}}

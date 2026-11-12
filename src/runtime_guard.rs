@@ -45,7 +45,7 @@ impl HardwareCircuitBreaker {
 
 /// 2. Детерминированный изохронный таймер (Zero-Jitter Spin Pacer с инструкцией CPU pause/yield)
 #[inline(always)]
-pub unsafe fn pace_until_tsc(target_tsc: u64) {
+pub unsafe fn pace_until_tsc(target_tsc: u64) { unsafe {
     loop {
         let (lo, hi): (u32, u32);
         #[cfg(target_arch = "x86_64")]
@@ -62,7 +62,7 @@ pub unsafe fn pace_until_tsc(target_tsc: u64) {
         #[cfg(target_arch = "aarch64")]
         asm!("yield", options(nomem, nostack));
     }
-}
+}}
 
 /// 3. Атомарный "Чёрный ящик" (Flight Recorder) в DDR через нетемпоральный movnti
 #[repr(C, align(64))]
@@ -74,7 +74,7 @@ pub struct BlackboxEvent {
 }
 
 #[inline(always)]
-pub unsafe fn record_blackbox_event_ddr(dst_slot: *mut BlackboxEvent, tsc: u64, code: u32, core_id: u32, snap: [u64; 6]) {
+pub unsafe fn record_blackbox_event_ddr(dst_slot: *mut BlackboxEvent, tsc: u64, code: u32, core_id: u32, snap: [u64; 6]) { unsafe {
     let ev = BlackboxEvent {
         tsc,
         event_code: code,
@@ -92,4 +92,4 @@ pub unsafe fn record_blackbox_event_ddr(dst_slot: *mut BlackboxEvent, tsc: u64, 
     }
     #[cfg(target_arch = "x86_64")]
     asm!("sfence", options(nostack));
-}
+}}

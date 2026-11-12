@@ -25,7 +25,7 @@ static ACTIVE_WORKERS: AtomicUsize = AtomicUsize::new(0);
 static START_BARRIER: AtomicUsize = AtomicUsize::new(0);
 
 #[inline(always)]
-unsafe fn sys_mmap_stack(size: usize) -> *mut u8 {
+unsafe fn sys_mmap_stack(size: usize) -> *mut u8 { unsafe {
     let ret: *mut u8;
     // PROT_READ | PROT_WRITE = 3, MAP_PRIVATE | MAP_ANONYMOUS = 0x22
     asm!(
@@ -43,7 +43,7 @@ unsafe fn sys_mmap_stack(size: usize) -> *mut u8 {
         options(nostack)
     );
     ret
-}
+}}
 
 /// Рабочий цикл одного ядра: 2 500 000 пакетов Active Inline Shield + movnti
 extern "C" fn core_worker_loop(core_id: usize) -> ! {

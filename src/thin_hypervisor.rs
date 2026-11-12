@@ -26,7 +26,7 @@ impl HypervisorVmcsRegion {
 
 /// Проверка поддержки Intel VT-x (CPUID.01H:ECX[bit 5]) без стандартной библиотеки
 #[inline(always)]
-pub unsafe fn cpu_supports_vmx() -> bool {
+pub unsafe fn cpu_supports_vmx() -> bool { unsafe {
     let ecx: u32;
     asm!(
         "push rbx",
@@ -39,11 +39,11 @@ pub unsafe fn cpu_supports_vmx() -> bool {
         options(nomem, nostack)
     );
     (ecx & (1 << 5)) != 0
-}
+}}
 
 /// Проверка поддержки AMD-V / SVM (CPUID.80000001H:ECX[bit 2])
 #[inline(always)]
-pub unsafe fn cpu_supports_svm() -> bool {
+pub unsafe fn cpu_supports_svm() -> bool { unsafe {
     let ecx: u32;
     asm!(
         "push rbx",
@@ -56,12 +56,12 @@ pub unsafe fn cpu_supports_svm() -> bool {
         options(nomem, nostack)
     );
     (ecx & (1 << 2)) != 0
-}
+}}
 
 /// Подготовка и вход в режим корневого гипервизора (VMX Root Operation, Ring -1)
 /// Выполняется в Bare-Metal / UEFI Stage 0 перед запуском Windows или Linux.
 #[inline(always)]
-pub unsafe fn enter_vmx_root_ring_minus_1(vmxon_region: &mut HypervisorVmcsRegion) -> Result<u32, u32> {
+pub unsafe fn enter_vmx_root_ring_minus_1(vmxon_region: &mut HypervisorVmcsRegion) -> Result<u32, u32> { unsafe {
     if !cpu_supports_vmx() {
         return Err(1); // Нет аппаратного VT-x
     }
@@ -106,4 +106,4 @@ pub unsafe fn enter_vmx_root_ring_minus_1(vmxon_region: &mut HypervisorVmcsRegio
     }
 
     Ok(vmcs_rev_id)
-}
+}}
