@@ -75,8 +75,8 @@ flowchart TD
 cargo build --release && taskset -c 0 ./target/release/zero_project
 
 # Build C-ABI shared libraries (Cisco DAQ & HFT Exchange Bridge)
-rustc --crate-type cdylib -O cisco_daq_plugin/lib.rs -o cisco_daq_plugin/libzero_cisco_daq.so
-rustc --crate-type cdylib -O hft_exchange_bridge/lib.rs -o hft_exchange_bridge/libzero_hft_exchange.so
+rustc --crate-type cdylib -C panic=abort -O cisco_daq_plugin/lib.rs -o cisco_daq_plugin/libzero_cisco_daq.so
+rustc --crate-type cdylib -C panic=abort -O hft_exchange_bridge/lib.rs -o hft_exchange_bridge/libzero_hft_exchange.so
 ```
 
 ## 5. Dual Licensing & Commercial Support
