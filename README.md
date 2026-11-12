@@ -43,7 +43,9 @@ flowchart TD
 
 * **Inline CPU Fast-Path (`27–36 cycles/pkt`):** Branchless `x86_64` ASM L7 DPI (`cmov`), zero-copy `AF_XDP`, and `XDP` kernel ingress filtering make pass/drop decisions in nanoseconds with zero heap allocations.
 * **Asynchronous GPU Sideband (`Out-of-Band`):** Vulkan Compute reads non-temporal `ZERORING` buffers (`vmovntdq`) in the background for Shannon IAT entropy analysis without adding latency to the packet path.
-* **Experimental R&D Blueprints:** `uefi_stage0` and `thin_hypervisor.rs` provide pre-OS boot attestation and `VT-x`/`AMD-V` Ring -1 stubs.
+| `uefi_stage0/` (`BOOTX64.EFI`) | **Beta / Verified** | Bare-metal UEFI Ring-0 Unikernel, PCIe BAR0 NIC TX-DMA (`20 cycles/frame`) |
+| `src/thin_hypervisor.rs` | **R&D Blueprint** | Hardware VT-x / AMD-V Ring -1 hypervisor skeleton |
+| `zero-vault/` (`12 KB ELF`) | **Beta / Verified** | Zero-dependency `no_std` TOTP 2FA, `mlock()` RAM & USB Dead-Man's Switch |
 
 ## 2. Hardware Cycle Benchmarks (`rdtscp + lfence`)
 
@@ -73,7 +75,9 @@ All baseline numbers below were measured on a standard desktop workstation (**In
 | `include/zero_timing.h`, `integrations/python/`, `integrations/go/` | **Beta / Verified** | Zero-dependency C/C++, Python (`ctypes`), Go (`mmap`) SDKs & `systemd` XDP unit |
 | `src/numa_hugepages.rs`, `src/pcie_ddio_ptp.rs` | **Beta / Verified** | Raw syscall `2MB HugePages`, `NUMA MPOL_BIND`, Intel DDIO & PTP PHC reader |
 | `ring_reader/zero_tui_radar.rs`, `src/runtime_guard.rs` | **Beta / Verified** | Zero-allocation live telemetry TUI radar, Watchdog & DDR Flight Recorder |
-| `uefi_stage0/`, `src/thin_hypervisor.rs` | **R&D Blueprint** | Bare-metal UEFI Stage 0 pre-OS loader & `VT-x` / `AMD-V` Ring -1 skeleton |
+| `uefi_stage0/` (`BOOTX64.EFI`) | **Beta / Verified** | Bare-metal UEFI Ring-0 Unikernel, PCIe BAR0 NIC TX-DMA (`20 cycles/frame`) |
+| `src/thin_hypervisor.rs` | **R&D Blueprint** | Hardware VT-x / AMD-V Ring -1 hypervisor skeleton |
+| `zero-vault/` (`12 KB ELF`) | **Beta / Verified** | Zero-dependency `no_std` TOTP 2FA, `mlock()` RAM & USB Dead-Man's Switch |
 
 ## 4. Building & Reproducing Benchmarks
 
