@@ -11,6 +11,7 @@ mod nic_bar0_pmd;
 mod ring_abi;
 mod flow_table;
 mod arch_hal;
+mod thin_hypervisor;
 
 use core::arch::asm;
 use core::panic::PanicInfo;

@@ -49,6 +49,7 @@ make -C gpu_offload && ./gpu_offload/vk_iat_bridge
 ```text
 ├── .cargo/              # Compiler flags and bare-metal target settings
 ├── src/
+│   ├── thin_hypervisor.rs # Ring -1 Intel VT-x (VMXON) & AMD-V (SVM) bare-metal hypervisor stub
 │   ├── arch_hal.rs      # Multi-arch x86_64 & ARM64 (aarch64) zero-branch & non-temporal HAL
 │   ├── flow_table.rs    # Lock-free 64-byte cache-aligned 65K flow table in DDR
 │   ├── ring_abi.rs      # Cross-platform 64-byte cache-aligned ZERORING ABI (UEFI/Linux/Windows)
