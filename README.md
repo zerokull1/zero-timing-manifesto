@@ -50,6 +50,7 @@ make -C gpu_offload && ./gpu_offload/vk_iat_bridge
 ```text
 ├── .cargo/              # Compiler flags and bare-metal target settings
 ├── src/
+│   ├── runtime_guard.rs    # Hardware Watchdog, Zero-Jitter Pacer & DDR Flight Recorder
 │   ├── adaptive_gateway.rs # Self-learning branchless ASM anti-DDoS entropy gateway
 │   ├── pcie_ddio_ptp.rs   # Intel DDIO L3 cache-direct priming & NIC PTP IEEE 1588 PHC reader
 │   ├── numa_hugepages.rs  # Zero-TLB-miss 2MB HugePages & NUMA MPOL_BIND raw syscall allocator

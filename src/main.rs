@@ -25,6 +25,8 @@ mod numa_hugepages;
 mod pcie_ddio_ptp;
 #[allow(unused_imports)]
 mod adaptive_gateway;
+#[allow(unused_imports)]
+mod runtime_guard;
 
 use core::arch::asm;
 use core::panic::PanicInfo;
