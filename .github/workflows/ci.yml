@@ -17,5 +17,5 @@ jobs:
         run: cargo build --release
       - name: Build C-ABI Shared Libraries
         run: |
-          rustc --crate-type cdylib -O cisco_daq_plugin/src/lib.rs -o cisco_daq_plugin/libzero_cisco_daq.so
-          rustc --crate-type cdylib -O hft_exchange_bridge/src/lib.rs -o hft_exchange_bridge/libzero_hft_exchange.so
+          rustc --crate-type cdylib -O cisco_daq_plugin/lib.rs -o cisco_daq_plugin/libzero_cisco_daq.so
+          rustc --crate-type cdylib -O hft_exchange_bridge/lib.rs -o hft_exchange_bridge/libzero_hft_exchange.so
