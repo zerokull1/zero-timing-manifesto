@@ -179,13 +179,17 @@ pub extern "efiapi" fn efi_main(image_handle: EfiHandle, system_table: *const Ef
         serial_write_bytes(b"==============================================================\r\n");
         serial_write_bytes(b"[OK] ExitBootServices() succeeded! Firmware drivers terminated.\r\n");
         serial_write_bytes(b"[OK] Interrupts masked (cli). Pure Polling Mode engaged.\r\n");
-        if let Some((_bar0, mac, _st)) = pci_nic::probe_intel_nic() {
+        if let Some((bar0, mac, _st)) = pci_nic::probe_intel_nic() {
             serial_write_bytes(b"[NIC] Intel 82540EM BAR0 Armed | MAC: ");
             for i in 0..6 {
                 serial_write_hex8(mac[i]);
                 if i < 5 { serial_write_bytes(b":"); }
             }
             serial_write_bytes(b"\r\n");
+            let tx_st = pci_nic::tx_send_frame(bar0, mac);
+            serial_write_bytes(b"[TX-DMA] MMIO Doorbell Fired | Descriptor Status: ");
+            serial_write_hex8(tx_st);
+            serial_write_bytes(b" (DD=1 Sent to Wire!)\r\n");
         }
 
         // Боевой прогон 1 000 000 пакетов прямо в голом Ring 0
