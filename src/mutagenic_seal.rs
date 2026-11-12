@@ -18,22 +18,21 @@ impl MutagenicKey512 {
     #[inline(always)]
     pub unsafe fn mutate_step(&mut self, tsc_now: u64) {
         let mix = tsc_now ^ self.hw_anchor.rotate_left((self.epoch & 63) as u32);
-        let s0 = self.state;
-        for i in 0..7 {
-            self.state[i] = self.state[i + 1].rotate_left(11) ^ mix.wrapping_add(i as u64 * 0x9E37_79B9);
+        self.state.rotate_left(1);
+        for (idx, word) in self.state.iter_mut().enumerate() {
+            *word = word.rotate_left(13) ^ mix.wrapping_add((idx as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15));
         }
-        if let (Some(dst), Some(src0)) = (self.state.last_mut(), s0.first()) { *dst = src0.rotate_right(19) ^ mix; }
         self.epoch = self.epoch.wrapping_add(1);
     }
 
-    /// Векторное запечатывание 64 байт (512 бит) через парные 256-битные регистры YMM (AVX2):
-    /// vpxor (512 бит за 2 такта) + vmovntdq (потоковая запись в DDR мимо кэша без троттлинга AVX-512)
+    /// Векторное запечатывание 64 байт (512 бит) в DDR:
+    /// Использует AVX2 vmovntdq при 32-байтном выравнивании dst_ddr (без риска #GP) и movnti как откат.
     #[inline(always)]
     pub unsafe fn seal_block_64b(&mut self, src: &[u64; 8], dst_ddr: *mut u64, tsc_now: u64) {
         self.mutate_step(tsc_now);
 
         #[cfg(target_feature = "avx2")]
-        {
+        if (dst_ddr as usize & 31) == 0 {
             asm!(
                 "vmovdqu ymm0, [{s}]",
                 "vmovdqu ymm1, [{s} + 32]",
@@ -52,14 +51,15 @@ impl MutagenicKey512 {
             return;
         }
 
-        #[cfg(not(target_feature = "avx2"))]
-        {
-            for i in 0..8 {
-                let c = src[i] ^ self.state[i];
-                asm!("movnti [{d}], {v}", d = in(reg) dst_ddr.add(i), v = in(reg) c, options(nostack));
-            }
-            asm!("sfence", options(nostack));
+        for (i, (s_word, k_word)) in src.iter().zip(self.state.iter()).enumerate() {
+            let c = *s_word ^ *k_word;
+            #[cfg(target_arch = "x86_64")]
+            asm!("movnti [{d}], {v}", d = in(reg) dst_ddr.add(i), v = in(reg) c, options(nostack));
+            #[cfg(not(target_arch = "x86_64"))]
+            core::ptr::write_volatile(dst_ddr.add(i), c);
         }
+        #[cfg(target_arch = "x86_64")]
+        asm!("sfence", options(nostack));
     }
 
     /// 1-тактовая безветвящаяся ловушка самоуничтожения (cmovnz + movnti)
@@ -67,6 +67,7 @@ impl MutagenicKey512 {
     pub unsafe fn verify_or_vaporize(&mut self, observed_sig: u64, trap_sink: *mut u64) -> u64 {
         let anomaly = observed_sig ^ self.hw_anchor;
         let ptr = self.state.as_mut_ptr() as u64;
+        #[cfg(target_arch = "x86_64")]
         asm!(
             "test {a}, {a}",
             "cmovnz {p}, {t}",
@@ -79,8 +80,8 @@ impl MutagenicKey512 {
             options(nostack)
         );
         let mask = if anomaly == 0 { u64::MAX } else { 0 };
-        for i in 0..8 {
-            self.state[i] &= mask;
+        for word in self.state.iter_mut() {
+            *word &= mask;
         }
         anomaly
     }
