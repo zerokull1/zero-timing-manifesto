@@ -17,6 +17,8 @@ mod flow_table;
 mod arch_hal;
 #[allow(unused_imports)]
 mod thin_hypervisor;
+#[allow(unused_imports)]
+mod mutagenic_seal;
 
 use core::arch::asm;
 use core::panic::PanicInfo;

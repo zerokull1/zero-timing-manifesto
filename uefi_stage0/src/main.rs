@@ -3,176 +3,129 @@
 
 use core::arch::asm;
 use uefi::prelude::*;
-use uefi::table::boot::{AllocateType, MemoryType};
-use uefi::CStr16;
+use uefi::proto::media::file::{File, FileAttribute, FileMode};
+use uefi::proto::media::fs::SimpleFileSystem;
+use uefi::table::boot::{AllocateType, MemoryType, SearchType};
+use uefi::{CStr16, Identify};
 
 #[inline(always)]
 unsafe fn rdmsr(msr: u32) -> u64 {
-    let lo: u32;
-    let hi: u32;
+    let (lo, hi): (u32, u32);
     asm!("rdmsr", in("ecx") msr, out("eax") lo, out("edx") hi, options(nomem, nostack));
     ((hi as u64) << 32) | (lo as u64)
 }
 
 #[inline(always)]
 unsafe fn wrmsr(msr: u32, val: u64) {
-    let lo = val as u32;
-    let hi = (val >> 32) as u32;
-    asm!("wrmsr", in("ecx") msr, in("eax") lo, in("edx") hi, options(nomem, nostack));
-}
-
-#[inline(always)]
-unsafe fn lock_isochronous_power_msr() -> u32 {
-    let misc = rdmsr(0x1A0);
-    wrmsr(0x1A0, misc | (1u64 << 38));
-    let perf_status = rdmsr(0x198);
-    let target_pstate = perf_status & 0xFFFF;
-    wrmsr(0x199, target_pstate);
-    target_pstate as u32
+    asm!("wrmsr", in("ecx") msr, in("eax") val as u32, in("edx") (val >> 32) as u32, options(nomem, nostack));
 }
 
 #[inline(always)]
 unsafe fn pcie_read32(bus: u8, slot: u8, func: u8, offset: u8) -> u32 {
-    let addr: u32 = ((bus as u32) << 16)
-        | ((slot as u32) << 11)
-        | ((func as u32) << 8)
-        | (offset as u32 & 0xFC)
-        | 0x8000_0000;
+    let addr: u32 = ((bus as u32) << 16) | ((slot as u32) << 11) | ((func as u32) << 8) | (offset as u32 & 0xFC) | 0x8000_0000;
     let data: u32;
-    asm!(
-        "out dx, eax",
-        "mov dx, 0xCFC",
-        "in eax, dx",
-        inout("dx") 0x0CF8 => _,
-        inout("eax") addr => data,
-        options(nostack, nomem)
-    );
+    asm!("out dx, eax", "mov dx, 0xCFC", "in eax, dx", inout("dx") 0x0CF8 => _, inout("eax") addr => data, options(nostack, nomem));
     data
 }
 
 #[inline(always)]
-unsafe fn pcie_write32(bus: u8, slot: u8, func: u8, offset: u8, val: u32) {
-    let addr: u32 = ((bus as u32) << 16)
-        | ((slot as u32) << 11)
-        | ((func as u32) << 8)
-        | (offset as u32 & 0xFC)
-        | 0x8000_0000;
-    asm!(
-        "mov dx, 0xCF8",
-        "out dx, eax",
-        "mov dx, 0xCFC",
-        "mov eax, {v:e}",
-        "out dx, eax",
-        in("eax") addr,
-        v = in(reg) val,
-        out("dx") _,
-        options(nostack, nomem)
-    );
+unsafe fn hw_rand64() -> u64 {
+    let (mut val, mut ok): (u64, u8) = (0, 0);
+    asm!("rdrand {v}", "setc {ok}", v = out(reg) val, ok = out(reg_byte) ok, options(nomem, nostack));
+    if ok != 0 && val != 0 { val } else {
+        let (lo, hi): (u32, u32);
+        asm!("rdtsc", out("eax") lo, out("edx") hi, options(nomem, nostack));
+        (((hi as u64) << 32) | (lo as u64)).wrapping_mul(0x9E37_79B9_7F4A_7C15)
+    }
 }
 
 fn to_hex16(val: u64, digits: usize, buf: &mut [u16; 19]) {
     const HEX: &[u8; 16] = b"0123456789ABCDEF";
-    let mut it = buf.iter_mut();
-    *it.next().unwrap() = 48;
-    *it.next().unwrap() = 120;
-    for i in 0..digits {
-        let shift = (digits - 1 - i) * 4;
-        *it.next().unwrap() = HEX[((val >> shift) & 0xF) as usize] as u16;
-    }
-    *it.next().unwrap() = 0;
-}
-
-#[inline(always)]
-unsafe fn rdtsc_serialized() -> u64 {
-    let lo: u32;
-    let hi: u32;
-    asm!("lfence", "rdtsc", out("eax") lo, out("edx") hi, options(nomem, nostack));
-    ((hi as u64) << 32) | (lo as u64)
+    buf[0] = 48; buf[1] = 120;
+    for i in 0..digits { buf[i + 2] = HEX[((val >> ((digits - 1 - i) * 4)) & 0xF) as usize] as u16; }
+    buf[digits + 2] = 0;
 }
 
 #[entry]
 fn main(_image_handle: Handle, mut st: SystemTable<Boot>) -> Status {
-    // 1. Резервируем 64 МБ (16384 страниц по 4КБ) физической DDR, недоступной для перезаписи Windows/Linux
-    let phys_ring_addr = st
-        .boot_services()
-        .allocate_pages(AllocateType::AnyPages, MemoryType::RESERVED, 16384)
-        .unwrap_or(0);
+    let mut key_512 = [0u64; 8];
+    let mut shards: u64 = 0;
 
+    if let Ok(handles) = st.boot_services().locate_handle_buffer(SearchType::ByProtocol(&SimpleFileSystem::GUID)) {
+        for h in handles.iter() {
+            if let Ok(mut fs) = st.boot_services().open_protocol_exclusive::<SimpleFileSystem>(*h) {
+                if let Ok(mut root) = fs.open_volume() {
+                    if let Ok(fh) = root.open(uefi::cstr16!("\\EFI\\ZERO\\shard.key"), FileMode::Read, FileAttribute::empty()) {
+                        if let Some(mut rf) = fh.into_regular_file() {
+                            let mut raw = [0u8; 64];
+                            if rf.read(&mut raw).unwrap_or(0) == 64 {
+                                for i in 0..8 {
+                                    key_512[i] ^= u64::from_le_bytes(raw[i * 8..(i + 1) * 8].try_into().unwrap());
+                                }
+                                shards += 1;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    unsafe {
+        if shards == 0 {
+            for i in 0..8 { key_512[i] = hw_rand64(); }
+        }
+    }
+
+    let phys_ring = st.boot_services().allocate_pages(AllocateType::AnyPages, MemoryType::RESERVED, 16384).unwrap_or(0);
     let out = st.stdout();
     out.reset(false).unwrap();
     out.output_string(uefi::cstr16!("=== ZERO-TIMING BARE-METAL RING 0 BOOT (UEFI) ===\r\n")).unwrap();
 
     let mut buf = [0u16; 19];
-
     unsafe {
-        if phys_ring_addr != 0 {
-            // Записываем сигнатуру "ZERORING" (0x5A45524F_52494E47) в обход кэша через movnti
-            asm!(
-                "movnti [{dst}], {sig}",
-                "sfence",
-                dst = in(reg) phys_ring_addr,
-                sig = in(reg) 0x5A45_524F_5249_4E47u64,
-                options(nostack)
-            );
-            out.output_string(uefi::cstr16!("[OS-Persistent DDR] 64MB Reserved @ ")).unwrap();
-            to_hex16(phys_ring_addr, 12, &mut buf);
-            let sl_m = core::slice::from_raw_parts(buf.as_ptr(), 15);
-            out.output_string(CStr16::from_u16_with_nul(sl_m).unwrap()).unwrap();
-            out.output_string(uefi::cstr16!("\r\n")).unwrap();
-        }
+        let misc = rdmsr(0x1A0);
+        wrmsr(0x1A0, misc | (1u64 << 38));
+        let pstate = rdmsr(0x198) & 0xFFFF;
+        wrmsr(0x199, pstate);
 
-        // 2. Аппаратная блокировка скачков напряжения/частоты (Anti-Morse MSR Power Lock)
-        let locked_pstate = lock_isochronous_power_msr();
-        out.output_string(uefi::cstr16!("[Anti-Morse MSR] P-State Locked (0x199): ")).unwrap();
-        to_hex16(locked_pstate as u64, 4, &mut buf);
-        let sl_p = core::slice::from_raw_parts(buf.as_ptr(), 7);
-        out.output_string(CStr16::from_u16_with_nul(sl_p).unwrap()).unwrap();
-        out.output_string(uefi::cstr16!("\r\n")).unwrap();
-
-        // 3. Холодный скан шины PCIe (NIC/NVMe/GPU) + активация Bus Master DMA
+        let (mut cpu_s, mut gpu_s, mut nvme_s) = (pstate ^ misc, 0x4750_5530u64, 0x4E56_4D45u64);
         for bus in 0..16u8 {
             for dev in 0..32u8 {
                 let vd = pcie_read32(bus, dev, 0, 0x00);
                 if (vd & 0xFFFF) != 0xFFFF {
                     let class = (pcie_read32(bus, dev, 0, 0x08) >> 24) & 0xFF;
                     let bar0 = pcie_read32(bus, dev, 0, 0x10) & 0xFFFF_FFF0;
-                    if bar0 != 0 && (class == 0x01 || class == 0x02 || class == 0x03) {
-                        let cmd = pcie_read32(bus, dev, 0, 0x04);
-                        pcie_write32(bus, dev, 0, 0x04, cmd | 0x0006);
-
-                        if class == 0x02 {
-                            out.output_string(uefi::cstr16!("[PCIe NIC ] BAR0: ")).unwrap();
-                        } else if class == 0x01 {
-                            out.output_string(uefi::cstr16!("[PCIe NVMe] BAR0: ")).unwrap();
-                        } else {
-                            out.output_string(uefi::cstr16!("[PCIe GPU ] BAR0: ")).unwrap();
-                        }
-
-                        to_hex16(bar0 as u64, 8, &mut buf);
-                        let sl = core::slice::from_raw_parts(buf.as_ptr(), 11);
-                        out.output_string(CStr16::from_u16_with_nul(sl).unwrap()).unwrap();
-                        out.output_string(uefi::cstr16!(" (BusMaster ON)\r\n")).unwrap();
+                    if bar0 != 0 {
+                        let sig = ((vd as u64) << 32) | (bar0 as u64);
+                        if class == 0x01 { nvme_s ^= sig; }
+                        else if class == 0x03 { gpu_s ^= sig; }
+                        else if class == 0x02 { cpu_s = cpu_s.rotate_left(7) ^ sig; }
                     }
                 }
             }
         }
 
-        // 4. Замер Active Inline Shield в чистом Ring 0
-        let mut fake_pkt: u32 = 0x0000_005A;
-        let mut dma_slot: u32 = 0;
-        let t0 = rdtsc_serialized();
-        let raw = core::ptr::read_volatile(&fake_pkt);
-        if (raw & 0xFF) != 65 {
-            core::ptr::write_volatile(&mut fake_pkt, (raw & !0xFF) | 65);
-        }
-        asm!("movnti [{dst}], {v:e}", "sfence", dst = in(reg) &mut dma_slot, v = in(reg) raw, options(nostack));
-        let t1 = rdtsc_serialized();
+        let triple_hw = cpu_s ^ gpu_s.rotate_left(13) ^ nvme_s.rotate_right(17);
+        for i in 0..8 { key_512[i] ^= triple_hw.rotate_left((i * 8) as u32); }
 
-        out.output_string(uefi::cstr16!("[Ring 0 Shield] Active Norm + movnti: ")).unwrap();
-        to_hex16(t1.saturating_sub(t0), 4, &mut buf);
-        let sl2 = core::slice::from_raw_parts(buf.as_ptr(), 7);
-        out.output_string(CStr16::from_u16_with_nul(sl2).unwrap()).unwrap();
-        out.output_string(uefi::cstr16!(" cycles (hex)\r\n")).unwrap();
+        if phys_ring != 0 {
+            let sealed_magic = 0x5A45_524F_5249_4E47u64 ^ key_512[0];
+            asm!("movnti [{d}], {m}", "movnti [{d} + 8], {h}", "sfence", d = in(reg) phys_ring, m = in(reg) sealed_magic, h = in(reg) triple_hw, options(nostack));
+
+            let diff = core::ptr::read_volatile((phys_ring + 8) as *const u64) ^ triple_hw;
+            let mut ptr = phys_ring;
+            let mut trap: u64 = 0;
+            asm!("test {d}, {d}", "cmovnz {p}, {t}", "movnti [{p} + 16], {d}", "sfence", d = in(reg) diff, t = in(reg) (&mut trap as *mut u64) as u64, p = inout(reg) ptr, options(nostack));
+
+            out.output_string(uefi::cstr16!("[3-Way HW Seal] CPU+GPU+NVMe: ")).unwrap();
+            to_hex16(triple_hw, 16, &mut buf);
+            out.output_string(CStr16::from_u16_with_nul(&buf).unwrap()).unwrap();
+            out.output_string(uefi::cstr16!("\r\n[USB Quorum] Shards: ")).unwrap();
+            to_hex16(shards, 4, &mut buf);
+            out.output_string(CStr16::from_u16_with_nul(&buf).unwrap()).unwrap();
+            out.output_string(uefi::cstr16!("\r\n")).unwrap();
+        }
     }
 
     st.boot_services().stall(1_000_000);
@@ -180,6 +133,4 @@ fn main(_image_handle: Handle, mut st: SystemTable<Boot>) -> Status {
 }
 
 #[panic_handler]
-fn panic(_info: &core::panic::PanicInfo) -> ! {
-    loop {}
-}
+fn panic(_info: &core::panic::PanicInfo) -> ! { loop {} }
