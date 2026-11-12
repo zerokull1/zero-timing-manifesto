@@ -3,6 +3,7 @@
 
 use core::arch::asm;
 use uefi::prelude::*;
+use uefi::table::boot::{AllocateType, MemoryType};
 use uefi::CStr16;
 
 #[inline(always)]
@@ -20,18 +21,13 @@ unsafe fn wrmsr(msr: u32, val: u64) {
     asm!("wrmsr", in("ecx") msr, in("eax") lo, in("edx") hi, options(nomem, nostack));
 }
 
-/// Аппаратная блокировка скачков частоты и напряжения (Anti-Morse Side-Channel Power Lock)
 #[inline(always)]
 unsafe fn lock_isochronous_power_msr() -> u32 {
-    // 1. Отключаем динамический Turbo Boost (бит 38 в IA32_MISC_ENABLE = 0x1A0)
     let misc = rdmsr(0x1A0);
     wrmsr(0x1A0, misc | (1u64 << 38));
-
-    // 2. Читаем номинальный P-State из IA32_PERF_STATUS (0x198) и фиксируем в IA32_PERF_CTL (0x199)
     let perf_status = rdmsr(0x198);
     let target_pstate = perf_status & 0xFFFF;
     wrmsr(0x199, target_pstate);
-
     target_pstate as u32
 }
 
@@ -96,6 +92,12 @@ unsafe fn rdtsc_serialized() -> u64 {
 
 #[entry]
 fn main(_image_handle: Handle, mut st: SystemTable<Boot>) -> Status {
+    // 1. Резервируем 64 МБ (16384 страниц по 4КБ) физической DDR, недоступной для перезаписи Windows/Linux
+    let phys_ring_addr = st
+        .boot_services()
+        .allocate_pages(AllocateType::AnyPages, MemoryType::RESERVED, 16384)
+        .unwrap_or(0);
+
     let out = st.stdout();
     out.reset(false).unwrap();
     out.output_string(uefi::cstr16!("=== ZERO-TIMING BARE-METAL RING 0 BOOT (UEFI) ===\r\n")).unwrap();
@@ -103,7 +105,23 @@ fn main(_image_handle: Handle, mut st: SystemTable<Boot>) -> Status {
     let mut buf = [0u16; 19];
 
     unsafe {
-        // 1. Блокируем скачки напряжения/частоты (Anti-Morse MSR Power Lock)
+        if phys_ring_addr != 0 {
+            // Записываем сигнатуру "ZERORING" (0x5A45524F_52494E47) в обход кэша через movnti
+            asm!(
+                "movnti [{dst}], {sig}",
+                "sfence",
+                dst = in(reg) phys_ring_addr,
+                sig = in(reg) 0x5A45_524F_5249_4E47u64,
+                options(nostack)
+            );
+            out.output_string(uefi::cstr16!("[OS-Persistent DDR] 64MB Reserved @ ")).unwrap();
+            to_hex16(phys_ring_addr, 12, &mut buf);
+            let sl_m = core::slice::from_raw_parts(buf.as_ptr(), 15);
+            out.output_string(CStr16::from_u16_with_nul(sl_m).unwrap()).unwrap();
+            out.output_string(uefi::cstr16!("\r\n")).unwrap();
+        }
+
+        // 2. Аппаратная блокировка скачков напряжения/частоты (Anti-Morse MSR Power Lock)
         let locked_pstate = lock_isochronous_power_msr();
         out.output_string(uefi::cstr16!("[Anti-Morse MSR] P-State Locked (0x199): ")).unwrap();
         to_hex16(locked_pstate as u64, 4, &mut buf);
@@ -111,7 +129,7 @@ fn main(_image_handle: Handle, mut st: SystemTable<Boot>) -> Status {
         out.output_string(CStr16::from_u16_with_nul(sl_p).unwrap()).unwrap();
         out.output_string(uefi::cstr16!("\r\n")).unwrap();
 
-        // 2. Холодный скан шины PCIe (NIC/NVMe/GPU) + активация Bus Master DMA
+        // 3. Холодный скан шины PCIe (NIC/NVMe/GPU) + активация Bus Master DMA
         for bus in 0..16u8 {
             for dev in 0..32u8 {
                 let vd = pcie_read32(bus, dev, 0, 0x00);
@@ -139,7 +157,7 @@ fn main(_image_handle: Handle, mut st: SystemTable<Boot>) -> Status {
             }
         }
 
-        // 3. Замер Active Inline Shield в чистом Ring 0
+        // 4. Замер Active Inline Shield в чистом Ring 0
         let mut fake_pkt: u32 = 0x0000_005A;
         let mut dma_slot: u32 = 0;
         let t0 = rdtsc_serialized();
