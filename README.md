@@ -50,6 +50,7 @@ make -C gpu_offload && ./gpu_offload/vk_iat_bridge
 ```text
 ├── .cargo/              # Compiler flags and bare-metal target settings
 ├── src/
+│   ├── numa_hugepages.rs  # Zero-TLB-miss 2MB HugePages & NUMA MPOL_BIND raw syscall allocator
 │   ├── mutagenic_seal.rs  # Autonomous 512-bit rolling mutagenic keystream & 1-cycle DDR trap
 │   ├── thin_hypervisor.rs # Ring -1 Intel VT-x (VMXON) & AMD-V (SVM) bare-metal hypervisor stub
 │   ├── arch_hal.rs      # Multi-arch x86_64 & ARM64 (aarch64) zero-branch & non-temporal HAL

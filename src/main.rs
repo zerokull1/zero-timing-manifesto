@@ -19,6 +19,8 @@ mod arch_hal;
 mod thin_hypervisor;
 #[allow(unused_imports)]
 mod mutagenic_seal;
+#[allow(unused_imports)]
+mod numa_hugepages;
 
 use core::arch::asm;
 use core::panic::PanicInfo;
