@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Zero-Timing Manifesto v1.1.0-beta — Offline PCAP & Synthetic Threat Replay Benchmark
-Прогон реальных .pcap дампов или синтетического микса (TLS/HTTP/QUIC + эксплойты/зонды)
+Прогон реальных .pcap дампов или синтетического микса (TLS/HTTP + аномальные зонды/Flood)
 через скомпилированную C-ABI библиотеку libzero_cisco_daq.so с замером p50/p95/p99/p99.9.
 """
 import argparse
@@ -39,7 +39,7 @@ def read_pcap_packets(pcap_path: str, limit: int = 100_000):
         global_hdr = f.read(24)
         if len(global_hdr) < 24:
             raise ValueError("Некорректный заголовок PCAP файла")
-        magic = struct.unpack("<I", global_hdr[:4])[0]
+        magic = struct.unpack("<I", global_hdr[:4])
         endian = "<" if magic in (0xA1B2C3D4, 0xA1B23C4D) else ">"
         while len(packets) < limit:
             pkt_hdr = f.read(16)
@@ -56,11 +56,14 @@ def read_pcap_packets(pcap_path: str, limit: int = 100_000):
 def build_tcp_frame(payload: bytes, dst_port: int = 443) -> bytes:
     eth = b"\x00\x11\x22\x33\x44\x55\x66\x77\x88\x99\xaa\xbb\x08\x00"
     ip_total_len = 20 + 20 + len(payload)
-    # IPv4: ver=4, ihl=5 (0x45), ttl=64, proto=6 (TCP), src=10.0.0.2, dst=10.0.0.1
-    ipv4 = struct.pack("!BBHHHBBH4s4s", 0x45, 0, ip_total_len, 1, 0, 64, 6, 0, b"\x0a\x00\x00\x02", b"\x0a\x00\x00\x01")
-    # TCP: src_port=54321, dst_port, seq=1, ack=1, data_offset=5 (0x50), flags=PSH+ACK (0x18), win=65535
+    ipv4 = struct.pack(
+        "!BBHHHBBH4s4s",
+        0x45, 0, ip_total_len, 1, 0, 64, 6, 0,
+        b"\x0a\x00\x00\x02", b"\x0a\x00\x00\x01"
+    )
     tcp = struct.pack("!HHIIBBHHH", 54321, dst_port, 1, 1, 0x50, 0x18, 65535, 0, 0)
     return eth + ipv4 + tcp + payload
+
 
 def generate_synthetic_mix(count: int = 100_000):
     clean_http = build_tcp_frame(b"GET /api/v1/market/depth HTTP/1.1\r\nHost: exchange.local\r\n\r\n", 80)
@@ -75,8 +78,7 @@ def generate_synthetic_mix(count: int = 100_000):
 def percentile(sorted_vals, pct):
     if not sorted_vals:
         return 0.0
-    idx = int(len(sorted_vals) * pct / 100.0)
-    idx = min(idx, len(sorted_vals) - 1)
+    idx = min(int(len(sorted_vals) * pct / 100.0), len(sorted_vals) - 1)
     return sorted_vals[idx]
 
 
@@ -96,7 +98,7 @@ def main():
         print(f"[*] Загрузка реального дампа PCAP: {args.pcap} (лимит {args.count} пакетов)...")
         packets = read_pcap_packets(args.pcap, args.count)
     else:
-        print(f"[*] Генерация синтетического микса (TLS 1.3 / HTTP / SQLi-зонды / Flood): {args.count} пакетов...")
+        print(f"[*] Генерация синтетического микса (TLS 1.3 / HTTP / Malformed Flood): {args.count} пакетов...")
         packets = generate_synthetic_mix(args.count)
 
     if not packets:
@@ -105,7 +107,6 @@ def main():
 
     c_buffers = [((ctypes.c_uint8 * len(p)).from_buffer_copy(p), len(p)) for p in packets]
 
-    # Прогрев кэша инструкций (Warmup)
     for buf, ln in c_buffers[:1000]:
         lib.zero_cisco_inspect_frame(buf, ln)
 
@@ -126,21 +127,23 @@ def main():
     latencies_ns.sort()
     mpps = (len(packets) / t_total_sec) / 1e6
 
-    print("\n" + "=" * 62)
-    print(f" ZERO-TIMING C-ABI REPLAY REPORT ({len(packets):,} packets)")
-    print("=" * 62)
-    print(f" Total Wall Time   : {t_total_sec:.4f} s ({mpps:.2f} Mpps incl. Python FFI)")
-    print(f" Latency p50       : {percentile(latencies_ns, 50):>6} ns")
-    print(f" Latency p95       : {percentile(latencies_ns, 95):>6} ns")
-    print(f" Latency p99       : {percentile(latencies_ns, 99):>6} ns")
-    print(f" Latency p99.9     : {percentile(latencies_ns, 99.9):>6} ns")
-    print("-" * 62)
-    print(" Inline Security Verdicts:")
+    report = []
+    report.append("=" * 62)
+    report.append(f" ZERO-TIMING C-ABI REPLAY REPORT ({len(packets):,} packets)")
+    report.append("=" * 62)
+    report.append(f" Total Wall Time   : {t_total_sec:.4f} s ({mpps:.2f} Mpps incl. Python FFI)")
+    report.append(f" Latency p50       : {percentile(latencies_ns, 50):>6} ns")
+    report.append(f" Latency p95       : {percentile(latencies_ns, 95):>6} ns")
+    report.append(f" Latency p99       : {percentile(latencies_ns, 99):>6} ns")
+    report.append(f" Latency p99.9     : {percentile(latencies_ns, 99.9):>6} ns")
+    report.append("-" * 62)
+    report.append(" Inline Security Verdicts:")
     for code, cnt in sorted(verdict_stats.items()):
         name = VERDICT_LABELS.get(code, f"CODE_{code}")
         pct = (cnt / len(packets)) * 100.0
-        print(f"   - {name:<16}: {cnt:>8,} ({pct:5.1f}%)")
-    print("=" * 62 + "\n")
+        report.append(f"   - {name:<16}: {cnt:>8,} ({pct:5.1f}%)")
+    report.append("=" * 62)
+    print("\n" + "\n".join(report) + "\n")
 
 
 if __name__ == "__main__":

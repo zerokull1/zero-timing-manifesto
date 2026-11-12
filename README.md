@@ -53,6 +53,7 @@ flowchart TD
 | **Branchless ASM L7 DPI (`TLS/HTTP/QUIC`)** | **30–36 cycles** | Warm L1 instruction cache batch inspection (`cmov` / SWAR, zero branches) |
 | **Isolated L1 Cache-Line Read** | **~69 cycles** | Single cold call including full pipeline serialization (`rdtscp + lfence` overhead) |
 | **GPU Sideband IAT Entropy (`Vulkan`)** | **48–66 CPU cycles** | Host CPU dispatch cost only (non-temporal ring write; GPU compute runs asynchronously) |
+| **C-ABI Replay via Python FFI (`100k pkts`)** | **~820 ns (p50)** | End-to-end `libzero_cisco_daq.so` call overhead incl. Python `ctypes` FFI (`~0.83 Mpps`) |
 
 ## 3. Module Readiness Matrix
 

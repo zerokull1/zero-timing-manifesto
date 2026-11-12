@@ -49,3 +49,21 @@ Hugetlb:           65536 kB
   ALL MODULES VERIFIED SUCCESSFULLY!
 =================================================================
 ```
+
+## v1.1.0-beta C-ABI PCAP Replay Benchmark (2026-11-12 16:50 UTC)
+```text
+[*] Генерация синтетического микса (TLS 1.3 / HTTP / Malformed Flood): 100000 пакетов...
+
+==============================================================
+ ZERO-TIMING C-ABI REPLAY REPORT (100,000 packets)
+==============================================================
+ Total Wall Time   : 0.1175 s (0.85 Mpps incl. Python FFI)
+ Latency p50       :    811 ns
+ Latency p95       :    895 ns
+ Latency p99       :   1972 ns
+ Latency p99.9     :  12538 ns
+--------------------------------------------------------------
+ Inline Security Verdicts:
+   - DROP            :  100,000 (100.0%)
+==============================================================
+```
