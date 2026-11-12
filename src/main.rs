@@ -27,6 +27,8 @@ mod pcie_ddio_ptp;
 mod adaptive_gateway;
 #[allow(unused_imports)]
 mod runtime_guard;
+#[allow(unused_imports)]
+mod hash_gate;
 
 use core::arch::asm;
 use core::panic::PanicInfo;
