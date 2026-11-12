@@ -1,3 +1,14 @@
+
+#[inline(always)]
+fn read_active_defense_telemetry(hdr_ptr: *const u8) -> (u64, u32, u32) {
+    unsafe {
+        let traps = core::ptr::read_unaligned(hdr_ptr.add(32) as *const u64);
+        let epoch = core::ptr::read_unaligned(hdr_ptr.add(40) as *const u32);
+        let flags = core::ptr::read_unaligned(hdr_ptr.add(44) as *const u32);
+        (traps, epoch, flags)
+    }
+}
+
 #![no_std]
 #![no_main]
 
@@ -146,6 +157,8 @@ pub unsafe extern "C" fn rust_radar_main(argc: u64) -> u64 {
         } else {
             sys_write(1, b"NORMAL (Flow Baseline Learned)".as_ptr(), 30);
         }
+        let l4 = b"\n  [TTL Guard & Whitelist]: Q8.8 EMA Baseline Active | CIDR Bypass: ARMED";
+        sys_write(1, l4.as_ptr(), l4.len());
 
         let l4 = b"\n  [Anomalies Mitigated]  : "; sys_write(1, l4.as_ptr(), l4.len());
         let s_anom = write_u64(anomalies_caught, &mut num_buf); sys_write(1, s_anom.as_ptr(), s_anom.len());

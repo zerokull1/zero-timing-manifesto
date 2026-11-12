@@ -1,3 +1,4 @@
+/* ZERO_XDP_TTL_GUARD v1.2.0: Early L3/L4 TTL==0, Tiny-Fragment & TCP Xmas/SYN-FIN Drop + Whitelist Bypass */
 #include <linux/bpf.h>
 #include <linux/if_ether.h>
 #include <linux/ip.h>
