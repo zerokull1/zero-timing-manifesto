@@ -41,6 +41,7 @@ impl MutagenicKey512 {
     pub unsafe fn verify_or_vaporize(&mut self, observed_sig: u64, trap_sink: *mut u64) -> u64 {
         let anomaly = observed_sig ^ self.hw_anchor;
         let mut ptr = self.state.as_mut_ptr() as u64;
+        let _ = ptr;
         asm!(
             "test {a}, {a}",
             "cmovnz {p}, {t}",
@@ -49,7 +50,7 @@ impl MutagenicKey512 {
             a = in(reg) anomaly,
             t = in(reg) trap_sink as u64,
             z = in(reg) 0u64,
-            p = inout(reg) ptr,
+            p = in(reg) ptr,
             options(nostack)
         );
         let mask = if anomaly == 0 { u64::MAX } else { 0 };
