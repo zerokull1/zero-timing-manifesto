@@ -21,6 +21,8 @@ mod thin_hypervisor;
 mod mutagenic_seal;
 #[allow(unused_imports)]
 mod numa_hugepages;
+#[allow(unused_imports)]
+mod pcie_ddio_ptp;
 
 use core::arch::asm;
 use core::panic::PanicInfo;
