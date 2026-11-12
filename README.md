@@ -1,6 +1,6 @@
 # Zero-Timing Manifesto
 
-**Deterministic, ultra-low-latency `no_std` Rust data-plane core and `x86_64` bare-metal architectural blueprint.**
+**Deterministic, ultra-low-latency `no_std` Rust (2024 Edition) data-plane core and `x86_64` bare-metal architectural blueprint.**
 
 > **Language:** **English** | [Русская версия (`README.ru.md`)](README.ru.md)  
 > **Hardware Logs:** Raw `lscpu`, `/proc/meminfo`, and execution telemetry are archived in [`docs/BENCHMARK_LOGS.md`](docs/BENCHMARK_LOGS.md).
@@ -27,6 +27,7 @@
 | :--- | :--- | :--- |
 | `src/l7_shield.rs`, `src/hash_gate.rs`, `src/af_xdp_engine.rs` | **Production Ready** | Branchless L3/L4/L7 SWAR inspection & zero-copy `AF_XDP` UMEM engine |
 | `xdp_shield/`, `cisco_daq_plugin/`, `hft_exchange_bridge/` | **Production Ready** | Linux kernel XDP hook & C-ABI `.so` plugins for Snort 3 / DPDK / SBE / ITCH |
+| `include/zero_timing.h`, `integrations/python/`, `integrations/go/` | **Production Ready** | Zero-dependency C/C++, Python (`ctypes`), Go (`mmap`) SDKs & `systemd` XDP unit |
 | `src/numa_hugepages.rs`, `src/pcie_ddio_ptp.rs` | **Production Ready** | Raw syscall `2MB HugePages`, `NUMA MPOL_BIND`, Intel DDIO & PTP PHC reader |
 | `ring_reader/zero_tui_radar.rs`, `src/runtime_guard.rs` | **Production Ready** | Zero-allocation live telemetry TUI radar, Watchdog & DDR Flight Recorder |
 | `uefi_stage0/`, `src/thin_hypervisor.rs` | **R&D Blueprint** | Bare-metal UEFI Stage 0 pre-OS loader & `VT-x` / `AMD-V` Ring -1 skeleton |
