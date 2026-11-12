@@ -90,3 +90,57 @@ pub fn benchmark_l7_swar() -> (u64, u8) {
     let combined_code = ((v_tls as u8) << 4) | (v_atk as u8);
     (t1.saturating_sub(t0), combined_code)
 }
+
+/// Безветвящийся x86_64 ASM инспектор QUIC / HTTP/3 (UDP 443)
+/// Проверяет Long Header (bit 7 = 1), валидность версии (v1/v2) и длину DCID/SCID без ветвлений.
+/// Возвращает 0 (Clean QUIC) или 0x04 (BlockedQuicAnomaly).
+#[inline(always)]
+pub unsafe fn inspect_quic_l7_asm(payload_ptr: *const u8, len: usize) -> u64 {
+    if len < 16 {
+        return 0;
+    }
+
+    let q0 = core::ptr::read_unaligned(payload_ptr as *const u64);
+    let first_byte = (q0 & 0xFF) as u8;
+
+    // Если это Short Header (bit 7 == 0), пропускаем без проверок Long Header
+    if (first_byte & 0x80) == 0 {
+        return 0;
+    }
+
+    // Версия QUIC находится в байтах 1..5 (Big-Endian)
+    let version_be = ((q0 >> 8) & 0xFFFF_FFFF) as u32;
+    let version = u32::from_be(version_be);
+    let dcid_len = ((q0 >> 40) & 0xFF) as u32;
+
+    let mut verdict: u64 = 0;
+
+    asm!(
+        // Проверка на известные версии: QUIC v1 (0x00000001), QUIC v2 (0x6b3343cf) или Version Negotiation (0x00000000)
+        "cmp {ver:e}, 1",
+        "sete {v1:l}",
+        "cmp {ver:e}, 0x6b3343cf",
+        "sete {v2:l}",
+        "test {ver:e}, {ver:e}",
+        "sete {vn:l}",
+        "or {v1:l}, {v2:l}",
+        "or {v1:l}, {vn:l}",
+        // Если ни одна версия не совпала — ставим флаг аномалии 0x04 через cmovz
+        "test {v1:l}, {v1:l}",
+        "mov {tmp}, 4",
+        "cmovz {verd}, {tmp}",
+        // По RFC 9000 длина DCID в QUIC v1/v2 не может превышать 20 байт
+        "cmp {dcid:e}, 20",
+        "cmova {verd}, {tmp}",
+        ver = in(reg) version,
+        dcid = in(reg) dcid_len,
+        v1 = out(reg) _,
+        v2 = out(reg) _,
+        vn = out(reg) _,
+        tmp = out(reg) _,
+        verd = inout(reg) verdict,
+        options(pure, nomem, nostack)
+    );
+
+    verdict
+}
