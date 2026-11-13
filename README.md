@@ -108,7 +108,7 @@ python3 tools/pcap_bench.py --count 100000
 ---
 
 ### Support the Project
-If you would like to support further research and open-source tools, you can send **TON** or **USDT (TON network)**:
+If you would like to support further research and help me build a dedicated **bare-metal testbed rack** (1U/2U Xeon/EPYC server + 10G/25G XDP NICs for real DDIO & line-rate benchmarks), you can send **TON** or **USDT (TON network)**:
 ```text
 UQBTjCDPiQIUl73F_1f-3ArppvjdfJ7mfONIyfDZl5d9z66Z
 ```
