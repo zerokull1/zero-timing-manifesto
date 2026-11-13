@@ -68,19 +68,18 @@ struct {
     __uint(max_entries, 4096 * 16);
 } events_ring SEC(".maps");
 
-static __u64 last_alert_ns = 0;
+
 
 static __always_inline void emit_alert(__u64 now, __u32 src_ip, __u32 reason) {
     // Анти-спам: будим AI не чаще 1 раза в 500 мс (500,000,000 нс)
-    if (now - last_alert_ns < 500000000ULL) return;
-    last_alert_ns = now;
+    
 
     struct alert_event *e = bpf_ringbuf_reserve(&events_ring, sizeof(*e), 0);
     if (!e) return;
     e->timestamp_ns = now;
     e->src_ip = src_ip;
     e->reason = reason;
-    bpf_ringbuf_submit(e, 0);
+    bpf_ringbuf_submit(e, BPF_RB_FORCE_WAKEUP);
 }
 
 SEC("xdp")
