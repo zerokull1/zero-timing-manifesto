@@ -109,3 +109,7 @@ If you would like to support further research and open-source tools, you can sen
 ```text
 UQBTjCDPiQIUl73F_1f-3ArppvjdfJ7mfONIyfDZl5d9z66Z
 ```
+### Honest Hardware & Silicon Boundaries (What Software Alone Cannot Solve)
+* **Sub-Ring 0 Firmware (`Intel ME / AMD PSP`):** Cannot be disabled from a running OS or Unikernel; requires SPI-flash neutralization (`me_cleaner` / `HAP` bit) and hardware `SMRAM` locking (`D_LCK`).
+* **Proprietary Hardware Specs (`Closed GPUs / Wi-Fi`):** Bare-metal `Ring 0` drivers target open-register NICs (`Intel e1000 / ixgbe / E810`); proprietary GPUs remain isolated in user-space via non-temporal `ZERORING` (`vmovntdq`).
+* **Physical Cryogenic DDR Attacks (`Cold Boot`):** Desktop DDR modules retain charge after sudden power loss unless keys are bound inside CPU silicon registers (`YMM15` TRESOR-mode in `zero-vault`) or protected by server **Intel TME / AMD SME**.
