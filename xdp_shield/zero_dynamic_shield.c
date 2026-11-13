@@ -7,11 +7,14 @@
 #define MODE_MONITOR   1
 #define MODE_ENFORCE   2
 
+#define EVENT_TTL_ANOMALY 1
+#define EVENT_RATE_FLOOD  2
+
 struct shield_cfg {
     __u32 mode;
     __u32 block_ttl_65;
     __u32 block_ttl_129;
-    __u32 pps_limit;      // Макс. пакетов/сек на 1 IP (0 = выкл)
+    __u32 pps_limit;
 };
 
 struct rate_state {
@@ -23,6 +26,12 @@ struct datarec {
     __u64 rx_packets;
     __u64 dropped_packets;
     __u64 whitelisted_packets;
+};
+
+struct alert_event {
+    __u64 timestamp_ns;
+    __u32 src_ip;
+    __u32 reason;
 };
 
 struct {
@@ -53,6 +62,27 @@ struct {
     __type(value, struct datarec);
 } stats_map SEC(".maps");
 
+// Кольцевой буфер для пробуждения AI-агента по прерыванию (0% CPU в простое)
+struct {
+    __uint(type, BPF_MAP_TYPE_RINGBUF);
+    __uint(max_entries, 4096 * 16);
+} events_ring SEC(".maps");
+
+static __u64 last_alert_ns = 0;
+
+static __always_inline void emit_alert(__u64 now, __u32 src_ip, __u32 reason) {
+    // Анти-спам: будим AI не чаще 1 раза в 500 мс (500,000,000 нс)
+    if (now - last_alert_ns < 500000000ULL) return;
+    last_alert_ns = now;
+
+    struct alert_event *e = bpf_ringbuf_reserve(&events_ring, sizeof(*e), 0);
+    if (!e) return;
+    e->timestamp_ns = now;
+    e->src_ip = src_ip;
+    e->reason = reason;
+    bpf_ringbuf_submit(e, 0);
+}
+
 SEC("xdp")
 int zero_dynamic_filter(struct xdp_md *ctx) {
     void *data_end = (void *)(long)ctx->data_end;
@@ -79,10 +109,9 @@ int zero_dynamic_filter(struct xdp_md *ctx) {
         return XDP_PASS;
     }
 
-    // 1. Проверка Rate-Limit (защита от DDoS-флуда по частоте пакетов)
+    __u64 now = bpf_ktime_get_ns();
     __u32 limit = cfg ? cfg->pps_limit : 0;
     if (limit > 0) {
-        __u64 now = bpf_ktime_get_ns();
         struct rate_state *rs = bpf_map_lookup_elem(&rate_map, &src_ip);
         if (!rs) {
             struct rate_state init = { .window_start_ns = now, .count = 1 };
@@ -95,19 +124,20 @@ int zero_dynamic_filter(struct xdp_md *ctx) {
                 rs->count++;
                 if (rs->count > limit) {
                     if (stats) stats->dropped_packets++;
+                    emit_alert(now, src_ip, EVENT_RATE_FLOOD);
                     if (mode == MODE_ENFORCE) return XDP_DROP;
                 }
             }
         }
     }
 
-    // 2. Проверка сигнатур тетеринга (TTL 65 / 129)
     __u8 ttl = ip->ttl;
     __u32 block_65  = cfg ? cfg->block_ttl_65  : 1;
     __u32 block_129 = cfg ? cfg->block_ttl_129 : 1;
 
     if ((block_65 && ttl == 65) || (block_129 && ttl == 129)) {
         if (stats) stats->dropped_packets++;
+        emit_alert(now, src_ip, EVENT_TTL_ANOMALY);
         if (mode == MODE_ENFORCE) return XDP_DROP;
     }
 
