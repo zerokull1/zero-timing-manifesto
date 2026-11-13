@@ -29,3 +29,17 @@ pub unsafe fn read_key_from_ymm15(temp_out: &mut [u8; 32]) {
 pub unsafe fn wipe_ymm15() {
     asm!("vpxor ymm15, ymm15, ymm15", out("ymm15") _, options(nostack, nomem));
 }
+
+// Расшифровка USB-блоба 256-битным PIN-ключом непосредственно внутри регистра YMM15 (защита от BadUSB / USB-сниффера)
+#[target_feature(enable = "avx2")]
+pub unsafe fn unlock_ymm15_with_pin(pin_mask: &mut [u8; 32]) {
+    asm!(
+        "vmovdqu ymm14, [{ptr}]",
+        "vpxor ymm15, ymm15, ymm14",
+        "vpxor ymm14, ymm14, ymm14",
+        ptr = in(reg) pin_mask.as_ptr(),
+        out("ymm14") _,
+        options(nostack)
+    );
+    wipe_secret(pin_mask);
+}

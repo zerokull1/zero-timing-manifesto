@@ -123,6 +123,19 @@ unsafe fn serial_write_u64(mut n: u64) {
 }
 
 #[inline(always)]
+unsafe fn lock_hardware_nxe_and_smram() {
+    // 1. Включаем NXE (Bit 11) в IA32_EFER (MSR 0xC000_0080) -> аппаратный запрет исполнения данных
+    let (mut lo, hi): (u32, u32);
+    asm!("rdmsr", in("ecx") 0xC000_0080u32, out("eax") lo, out("edx") hi, options(nostack, nomem));
+    lo |= 1 << 11;
+    asm!("wrmsr", in("ecx") 0xC000_0080u32, in("eax") lo, in("edx") hi, options(nostack, nomem));
+
+    // 2. Устанавливаем D_LCK (Bit 4 в SMRAM 0x88 на Host Bridge 00:00.0) -> блокировка Ring -2 SMM
+    let smram = pci_nic::pci_read32(0, 0, 0, 0x88);
+    pci_nic::pci_write32(0, 0, 0, 0x88, smram | (1 << 4));
+}
+
+#[inline(always)]
 unsafe fn rdtscp_serialized() -> u64 {
     let lo: u32;
     let hi: u32;
@@ -179,6 +192,8 @@ pub extern "efiapi" fn efi_main(image_handle: EfiHandle, system_table: *const Ef
         serial_write_bytes(b"==============================================================\r\n");
         serial_write_bytes(b"[OK] ExitBootServices() succeeded! Firmware drivers terminated.\r\n");
         serial_write_bytes(b"[OK] Interrupts masked (cli). Pure Polling Mode engaged.\r\n");
+        lock_hardware_nxe_and_smram();
+        serial_write_bytes(b"[SEC] Hardware EFER.NXE Enabled + SMRAM D_LCK Locked [OK]\r\n");
         if let Some((bar0, mac, _st)) = pci_nic::probe_intel_nic() {
             serial_write_bytes(b"[NIC] Intel 82540EM BAR0 Armed | MAC: ");
             for i in 0..6 {
