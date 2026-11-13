@@ -23,5 +23,6 @@ bpftool map pin name blacklist_v4 /sys/fs/bpf/zero_shield/blacklist_v4
 bpftool map pin name config_map   /sys/fs/bpf/zero_shield/config_map
 bpftool map pin name stats_map    /sys/fs/bpf/zero_shield/stats_map
 bpftool map pin name events_ring  /sys/fs/bpf/zero_shield/events_ring
+bpftool map pin name xsks_map     /sys/fs/bpf/zero_shield/xsks_map
 
 echo "[OK] КПП активен на $IFACE | Режим NIC: $ACTIVE_MODE"

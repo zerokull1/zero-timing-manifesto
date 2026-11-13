@@ -94,6 +94,13 @@ static __always_inline void emit_alert(__u64 now, __u32 src_ip, __u32 reason) {
     bpf_ringbuf_submit(e, BPF_RB_FORCE_WAKEUP);
 }
 
+struct {
+    __uint(type, BPF_MAP_TYPE_XSKMAP);
+    __uint(max_entries, 64);
+    __type(key, __u32);
+    __type(value, __u32);
+} xsks_map SEC(".maps");
+
 SEC("xdp")
 int zero_dynamic_filter(struct xdp_md *ctx) {
     void *data_end = (void *)(long)ctx->data_end;
@@ -195,6 +202,11 @@ int zero_dynamic_filter(struct xdp_md *ctx) {
         if (mode == MODE_ENFORCE) return XDP_DROP;
     }
 
+    // Если на этой очереди RX подключён пользовательский AF_XDP сокет — отдаём пакет в Zero-Copy UMEM
+    __u32 qid = ctx->rx_queue_index;
+    if (bpf_map_lookup_elem(&xsks_map, &qid)) {
+        return bpf_redirect_map(&xsks_map, qid, 0);
+    }
     return XDP_PASS;
 }
 
