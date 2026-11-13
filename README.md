@@ -78,6 +78,7 @@ All baseline numbers below were measured on a standard desktop workstation (**In
 | `uefi_stage0/` (`BOOTX64.EFI`) | **Beta / Verified** | Bare-metal UEFI Ring-0 Unikernel, PCIe BAR0 NIC TX-DMA (`20 cycles/frame`) |
 | `src/thin_hypervisor.rs` | **R&D Blueprint** | Hardware VT-x / AMD-V Ring -1 hypervisor skeleton |
 | `zero-vault/` (`12 KB ELF`) | **Beta / Verified** | Zero-dependency `no_std` TOTP 2FA, `mlock()` RAM & USB Dead-Man's Switch |
+| `tools/zero_ctl.rs` (`6.5 KB ELF`) & `sdk_template/` | **Beta / Verified** | Zero-dependency `no_std` eBPF controller (`stats`, `watch` via `epoll`, LRU rate-limit) & Rust+ASM+C SDK |
 
 ## 4. Building & Reproducing Benchmarks
 
@@ -97,6 +98,9 @@ rustc --crate-type cdylib -C panic=abort -O hft_exchange_bridge/lib.rs -o hft_ex
 
 # Run offline PCAP / synthetic threat replay benchmark (no NIC/root required)
 python3 tools/pcap_bench.py --count 100000
+
+# Build 6.5KB zero-dependency no_std eBPF control CLI (stats, watch, allow, limit)
+rustc -O -C panic=abort -C target-feature=-sse,-sse2 -C link-arg=-nostartfiles -C link-arg=-static -C strip=symbols tools/zero_ctl.rs -o target/release/zero-ctl
 # Or replay a real .pcap capture file:
 # python3 tools/pcap_bench.py --pcap capture.pcap
 ```
