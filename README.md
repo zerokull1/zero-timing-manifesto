@@ -13,6 +13,9 @@
 
 ## Data-Plane Packet Flow Architecture
 
+# Compile & attach single-file ISP Anti-Tethering (TTL 65/129) XDP filter
+clang -O2 -g -target bpf -c xdp_shield/isp_ttl65_shield.c -o xdp_shield/isp_ttl65_shield.o
+# sudo ip link set dev <IFACE> xdp obj xdp_shield/isp_ttl65_shield.o sec xdp
 ```mermaid
 flowchart LR
     NIC["NIC / Kernel Ingress<br/>(XDP / Zero-Copy AF_XDP)"] --> CPU["Isolated CPU Core 0<br/>Branchless x86_64 ASM & SWAR<br/>(27–36 cycles/pkt)"]
@@ -68,7 +71,7 @@ All baseline numbers below were measured on a standard desktop workstation (**In
 | Module / Directory | Status | Role & Technical Scope |
 | :--- | :--- | :--- |
 | `src/l7_shield.rs`, `src/ttl_guard.rs`, `src/af_xdp_engine.rs` | **Beta / Verified** | Branchless L3/L4/L7 SWAR inspection, self-learning `TTL` EMA guard & IPv4 whitelist |
-| `xdp_shield/`, `cisco_daq_plugin/`, `hft_exchange_bridge/` | **Beta / Verified** | Linux kernel XDP hook & C-ABI `.so` plugins for Snort 3 / DPDK / SBE / ITCH |
+| `xdp_shield/`, `cisco_daq_plugin/`, `hft_exchange_bridge/` | **Beta / Verified** | Linux kernel XDP hook, single-file ISP `TTL 65/129` shield & C-ABI `.so` plugins |
 | `include/zero_timing.h`, `integrations/python/`, `integrations/go/` | **Beta / Verified** | Zero-dependency C/C++, Python (`ctypes`), Go (`mmap`) SDKs & `systemd` XDP unit |
 | `src/numa_hugepages.rs`, `src/pcie_ddio_ptp.rs` | **Beta / Verified** | Raw syscall `2MB HugePages`, `NUMA MPOL_BIND`, Intel DDIO & PTP PHC reader |
 | `ring_reader/zero_tui_radar.rs`, `src/runtime_guard.rs` | **Beta / Verified** | Zero-allocation live telemetry TUI radar, Watchdog & DDR Flight Recorder |
