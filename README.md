@@ -17,7 +17,7 @@
 clang -O2 -g -target bpf -c xdp_shield/isp_ttl65_shield.c -o xdp_shield/isp_ttl65_shield.o
 # sudo ip link set dev <IFACE> xdp obj xdp_shield/isp_ttl65_shield.o sec xdp
 ```mermaid
-flowchart LR
+flowchart TD
     NIC["NIC / Kernel Ingress<br/>(XDP / Zero-Copy AF_XDP)"] --> CPU["Isolated CPU Core 0<br/>Branchless x86_64 ASM & SWAR<br/>(27–36 cycles/pkt)"]
     CPU --> ACTION{"Inline Verdict"}
     ACTION -- "Pass / Forward" --> WIRE["TX Ring / HFT Bridge<br/>(SBE / ITCH / DPDK)"]
