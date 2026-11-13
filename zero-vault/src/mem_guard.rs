@@ -14,7 +14,7 @@ pub unsafe fn wipe_secret(buf: &mut [u8]) {
     core::sync::atomic::compiler_fence(core::sync::atomic::Ordering::SeqCst);
 }
 
-#[no_mangle] pub unsafe extern "C" fn memcpy(d: *mut u8, s: *const u8, n: usize) -> *mut u8 { for i in 0..n { core::ptr::write_volatile(d.add(i), core::ptr::read_volatile(s.add(i))); } d }
-#[no_mangle] pub unsafe extern "C" fn memset(d: *mut u8, c: i32, n: usize) -> *mut u8 { for i in 0..n { core::ptr::write_volatile(d.add(i), c as u8); } d }
-#[no_mangle] pub unsafe extern "C" fn memcmp(a: *const u8, b: *const u8, n: usize) -> i32 { for i in 0..n { if *a.add(i) != *b.add(i) { return *a.add(i) as i32 - *b.add(i) as i32; } } 0 }
+#[no_mangle] pub unsafe extern "C" fn memcpy(d: *mut core::ffi::c_void, s: *const core::ffi::c_void, n: usize) -> *mut core::ffi::c_void { for i in 0..n { core::ptr::write_volatile((d as *mut u8).add(i), core::ptr::read_volatile((s as *const u8).add(i))); } d }
+#[no_mangle] pub unsafe extern "C" fn memset(d: *mut core::ffi::c_void, c: i32, n: usize) -> *mut core::ffi::c_void { for i in 0..n { core::ptr::write_volatile((d as *mut u8).add(i), c as u8); } d }
+#[no_mangle] pub unsafe extern "C" fn memcmp(a: *const core::ffi::c_void, b: *const core::ffi::c_void, n: usize) -> i32 { for i in 0..n { if *(a as *const u8).add(i) != *(b as *const u8).add(i) { return *(a as *const u8).add(i) as i32 - *(b as *const u8).add(i) as i32; } } 0 }
 #[no_mangle] pub extern "C" fn rust_eh_personality() {}
