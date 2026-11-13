@@ -1,3 +1,6 @@
+// Copyright (c) 2026 zerokull1 (https://github.com)
+// Licensed under GPL-3.0. Unauthorized proprietary use is strictly prohibited.
+
 #![deny(unsafe_op_in_unsafe_fn)]
 #![no_std]
 #![no_main]
@@ -222,3 +225,9 @@ pub extern "C" fn main_entry() -> ! {
 pub unsafe extern "C" fn _start() -> ! {
     core::arch::naked_asm!("and rsp, -16", "call main_entry");
 }
+
+
+
+#[used]
+#[unsafe(link_section = ".note.zerokull1.watermark")]
+static WATERMARK: &[u8] = b"ZERO-TIMING-MANIFESTO::AUTHOR=zerokull1::LICENSE=GPL-3.0::REPO=https://github.com\0";
