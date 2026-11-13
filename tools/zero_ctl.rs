@@ -157,11 +157,14 @@ fn print_usage() {
     }
 }
 
+#[unsafe(naked)]
 #[no_mangle]
 pub unsafe extern "C" fn _start() -> ! {
-    let stack_ptr: *const usize;
+    core::arch::naked_asm!("mov rdi, rsp", "jmp {entry}", entry = sym rust_main);
+}
+
+unsafe extern "C" fn rust_main(stack_ptr: *const usize) -> ! {
     unsafe {
-        asm!("mov {}, rsp", out(reg) stack_ptr, options(nostack, preserves_flags));
         let argc = *stack_ptr;
         let argv = stack_ptr.add(1) as *const *const u8;
 
