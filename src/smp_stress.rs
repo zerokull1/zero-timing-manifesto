@@ -86,7 +86,7 @@ extern "C" fn core_worker_loop(core_id: usize) -> ! {
 
 /// Запускает параллельный стресс-тест на `num_threads` ядрах через sys_clone
 pub fn run_smp_matrix_stress(num_threads: usize) -> (u64, u64) {
-    let threads = if num_threads > 16 { 16 } else if num_threads == 0 { 1 } else { num_threads };
+    let threads = num_threads.clamp(1, 16);
     ACTIVE_WORKERS.store(threads, Ordering::SeqCst);
     START_BARRIER.store(0, Ordering::SeqCst);
 

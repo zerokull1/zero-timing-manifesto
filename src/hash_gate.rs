@@ -14,7 +14,7 @@ pub unsafe fn hw_crc32c_u64(seed: u32, data: u64) -> u32 { unsafe {
             d = in(reg) data,
             options(pure, nomem, nostack)
         );
-        return crc as u32;
+        crc as u32
     }
 
     #[cfg(target_arch = "aarch64")]
@@ -55,7 +55,7 @@ pub unsafe fn verify_hash_or_trash(word0: u64, word1: u64, expected_hash: u32, s
             t = in(reg) trash,
             options(pure, nomem, nostack)
         );
-        return verdict;
+        verdict
     }
 
     #[cfg(not(target_arch = "x86_64"))]

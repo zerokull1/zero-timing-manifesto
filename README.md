@@ -116,3 +116,12 @@ UQBTjCDPiQIUl73F_1f-3ArppvjdfJ7mfONIyfDZl5d9z66Z
 * **Sub-Ring 0 Firmware (`Intel ME / AMD PSP`):** Cannot be disabled from a running OS or Unikernel; requires SPI-flash neutralization (`me_cleaner` / `HAP` bit) and hardware `SMRAM` locking (`D_LCK`).
 * **Proprietary Hardware Specs (`Closed GPUs / Wi-Fi`):** Bare-metal `Ring 0` drivers target open-register NICs (`Intel e1000 / ixgbe / E810`); proprietary GPUs remain isolated in user-space via non-temporal `ZERORING` (`vmovntdq`).
 * **Physical Cryogenic DDR Attacks (`Cold Boot`):** Desktop DDR modules retain charge after power loss unless keys are bound inside CPU silicon registers (`YMM15` TRESOR-mode in `zero-vault`) or protected by server **Intel TME / AMD SME**.
+
+---
+
+## 6. Enterprise Products & Commercial Pilots (B2B)
+
+For production deployments, commercial licensing (without GPL-3.0 copyleft), and 14-day PoC pilots, see **[Enterprise Solutions & Deployment Guide](docs/ENTERPRISE_SOLUTIONS.md)**:
+
+* **Zero-Shield (Telecom, Hosting & Anti-DDoS):** Line-rate XDP ingress filtering, anti-tethering TTL guard, and drop-in Snort/Suricata C-ABI accelerator (`libzero_cisco_daq.so`).
+* **Zero-Bridge (HFT & Fintech):** Zero-allocation `no_std` market data parser (SBE/ITCH) with C-ABI (`libzero_hft_exchange.so`), 2MB HugePages, and PTP hardware timestamping.

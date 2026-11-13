@@ -212,6 +212,10 @@ pub extern "C" fn main_entry() -> ! {
 
 #[unsafe(naked)]
 #[no_mangle]
+/// Точка входа bare-metal / no_std бинарника.
+///
+/// # Safety
+/// Вызывается напрямую загрузчиком ядра / ELF-рантаймом при старте процесса.
 pub unsafe extern "C" fn _start() -> ! {
     core::arch::naked_asm!("and rsp, -16", "call main_entry");
 }

@@ -49,8 +49,8 @@ pub unsafe fn track_flow_lockfree(
 
     // Если слот пуст или устарел (> 3 млрд тактов ~ 1 сек) — захватываем его без блокировок
     let last = slot.last_tsc.load(Ordering::Relaxed);
-    if current_hash == 0 || now_tsc.saturating_sub(last) > 3_000_000_000 {
-        if slot
+    if (current_hash == 0 || now_tsc.saturating_sub(last) > 3_000_000_000)
+        && slot
             .flow_hash
             .compare_exchange(current_hash, flow_hash, Ordering::AcqRel, Ordering::Relaxed)
             .is_ok()
@@ -61,7 +61,6 @@ pub unsafe fn track_flow_lockfree(
             slot.last_tsc.store(now_tsc, Ordering::Release);
             return 0;
         }
-    }
 
     0
 }}

@@ -35,7 +35,7 @@ pub fn analyze_ddr_ring_cpu(ring_ptr: *const u64) -> (u32, u32) {
             let delta = curr.wrapping_sub(prev);
             prev = curr;
 
-            if delta > 5000 || delta < 10 {
+            if !(10..=5000).contains(&delta) {
                 jitter_alerts += 1;
             }
             let bin = ((delta >> 4) & 0x0F) as usize;

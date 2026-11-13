@@ -39,12 +39,10 @@ pub struct SelfLearningTtlGuard {
 
 impl SelfLearningTtlGuard {
     pub const fn new() -> Self {
-        const EMPTY_SLOT: TtlFlowSlot = TtlFlowSlot::new();
-        const ZERO_U32: AtomicU32 = AtomicU32::new(0);
         Self {
-            slots: [EMPTY_SLOT; TABLE_SIZE],
-            wl_nets: [ZERO_U32; MAX_WHITELIST],
-            wl_masks: [ZERO_U32; MAX_WHITELIST],
+            slots: [const { TtlFlowSlot::new() }; TABLE_SIZE],
+            wl_nets: [const { AtomicU32::new(0) }; MAX_WHITELIST],
+            wl_masks: [const { AtomicU32::new(0) }; MAX_WHITELIST],
             wl_count: AtomicUsize::new(0),
             total_checked: AtomicU64::new(0),
             total_whitelisted: AtomicU64::new(0),
