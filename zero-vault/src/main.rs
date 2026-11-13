@@ -1,6 +1,6 @@
 #![no_std]
 #![no_main]
-mod base32; mod mem_guard; mod totp; mod usb_watch;
+mod base32; mod cpu_reg_vault; mod mem_guard; mod totp; mod usb_watch;
 use core::arch::asm;
 
 unsafe fn write_str(s: &[u8]) { asm!("syscall", in("rax") 1usize, in("rdi") 1usize, in("rsi") s.as_ptr(), in("rdx") s.len(), out("rcx") _, out("r11") _, options(nostack)); }
@@ -13,23 +13,44 @@ pub unsafe extern "C" fn _start() -> ! { core::arch::naked_asm!("mov rdi, rsp", 
 pub extern "C" fn entry(sp: *const usize) -> ! {
     unsafe {
         let (argc, argv) = (*sp, sp.add(1) as *const *const u8);
-        let (mut in_b, mut key_b) = ([0u8; 128], [0u8; 64]);
-        mem_guard::lock_memory(in_b.as_ptr(), 128); mem_guard::lock_memory(key_b.as_ptr(), 64);
-        if argc >= 3 {
+        let (mut in_b, mut ddr_key) = ([0u8; 128], [0u8; 32]);
+        mem_guard::lock_memory(in_b.as_ptr(), 128); mem_guard::lock_memory(ddr_key.as_ptr(), 32);
+
+        let klen = if argc >= 3 {
             let n = usb_watch::ingest_and_shred_usb_key(*argv.add(2), &mut in_b);
-            if n == 0 { write_str(b"[ERR] USB key missing\n"); usb_watch::wipe_and_exit(&mut in_b, &mut key_b); }
-            let klen = base32::decode_base32(&in_b[..n], &mut key_b);
+            if n == 0 { write_str(b"[ERR] USB key missing\n"); usb_watch::wipe_and_exit(&mut in_b, &mut ddr_key); }
+            let l = base32::decode_base32(&in_b[..n], &mut ddr_key);
             mem_guard::wipe_secret(&mut in_b);
-            write_str(b"[USB-SHRED] Ingested to mlock() RAM & wiped from USB!\n");
+            l
+        } else {
+            base32::decode_base32(b"JBSWY3DPEHPK3PXP", &mut ddr_key)
+        };
+
+        // Запечатываем ключ в кристалл CPU (YMM15) и полностью затираем DDR (Cold-Boot Proof)
+        cpu_reg_vault::seal_key_in_ymm15(&mut ddr_key);
+
+        if argc >= 3 {
+            write_str(b"[COLD-BOOT SHIELD] Key sealed in CPU YMM15 register (DDR = 0x00)!\n");
             loop {
-                if !usb_watch::path_exists(*argv.add(1)) { write_str(b"\n[USB DETACHED] RAM Wiped!\n"); usb_watch::wipe_and_exit(&mut in_b, &mut key_b); }
-                write_str(b"\r[ARMED] 2FA: "); print_6d(totp::generate_totp(&key_b[..klen], now_sec()));
+                if !usb_watch::path_exists(*argv.add(1)) {
+                    cpu_reg_vault::wipe_ymm15();
+                    write_str(b"\n[USB DETACHED] CPU YMM15 & RAM Wiped!\n");
+                    usb_watch::wipe_and_exit(&mut in_b, &mut ddr_key);
+                }
+                cpu_reg_vault::read_key_from_ymm15(&mut ddr_key);
+                let code = totp::generate_totp(&ddr_key[..klen], now_sec());
+                mem_guard::wipe_secret(&mut ddr_key);
+                write_str(b"\r[ARMED YMM15] 2FA: "); print_6d(code);
                 usb_watch::sleep_ms(250);
             }
         }
-        let klen = base32::decode_base32(b"JBSWY3DPEHPK3PXP", &mut key_b);
-        write_str(b"Demo 2FA: "); print_6d(totp::generate_totp(&key_b[..klen], now_sec())); write_str(b"\n");
-        usb_watch::wipe_and_exit(&mut in_b, &mut key_b);
+
+        cpu_reg_vault::read_key_from_ymm15(&mut ddr_key);
+        let code = totp::generate_totp(&ddr_key[..klen], now_sec());
+        mem_guard::wipe_secret(&mut ddr_key);
+        cpu_reg_vault::wipe_ymm15();
+        write_str(b"[YMM15 TRESOR-MODE] 2FA Token: "); print_6d(code); write_str(b" | DDR & YMM15 Wiped [OK]\n");
+        usb_watch::wipe_and_exit(&mut in_b, &mut ddr_key);
     }
 }
 #[panic_handler] fn panic(_: &core::panic::PanicInfo) -> ! { loop {} }

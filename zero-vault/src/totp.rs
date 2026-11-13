@@ -21,7 +21,7 @@ pub fn sha1(data: &[u8]) -> [u8; 20] {
             let t = a.rotate_left(5).wrapping_add(f).wrapping_add(e).wrapping_add(k).wrapping_add(wi);
             e = d; d = c; c = b.rotate_left(30); b = a; a = t;
         }
-        h = h.wrapping_add(a); h = h.wrapping_add(b); h = h.wrapping_add(c); h = h.wrapping_add(d); h = h.wrapping_add(e);
+        let add = [a, b, c, d, e]; for i in 0..5 { h[i] = h[i].wrapping_add(add[i]); }
     }
     let mut out = [0u8; 20];
     for i in 0..5 { out[i*4..i*4+4].copy_from_slice(&h[i].to_be_bytes()); }
@@ -36,6 +36,6 @@ pub unsafe fn generate_totp(secret: &[u8], secs: u64) -> u32 {
     let mut obuf = [0u8; 84]; obuf[..64].copy_from_slice(&opad); obuf[64..84].copy_from_slice(&ihash);
     let dig = sha1(&obuf);
     wipe_secret(&mut ipad); wipe_secret(&mut opad); wipe_secret(&mut ibuf); wipe_secret(&mut obuf);
-    let off = (dig & 0x0F) as usize;
+    let off = (dig[19] & 0x0F) as usize;
     (((dig[off] as u32 & 0x7F) << 24) | ((dig[off+1] as u32) << 16) | ((dig[off+2] as u32) << 8) | (dig[off+3] as u32)) % 1_000_000
 }
