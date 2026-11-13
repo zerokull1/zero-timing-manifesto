@@ -32,10 +32,13 @@ mod runtime_guard;
 #[allow(unused_imports)]
 mod hash_gate;
 mod ttl_guard;
+mod anti_tethering;
 
 use core::arch::asm;
+#[cfg(not(test))]
 use core::panic::PanicInfo;
 
+#[cfg(not(test))]
 #[panic_handler]
 fn panic(_info: &PanicInfo) -> ! {
     sys_exit(1);
