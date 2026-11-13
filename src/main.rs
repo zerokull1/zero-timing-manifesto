@@ -2,6 +2,7 @@
 #![no_std]
 #![no_main]
 
+pub mod nic_driver;
 mod tsc;
 #[allow(dead_code)]
 mod bpf_control;
