@@ -9,8 +9,3 @@ opt-level = "z"
 lto = true
 strip = true
 
-[profile.release]
-panic = "abort"
-opt-level = "z"
-lto = true
-strip = true
