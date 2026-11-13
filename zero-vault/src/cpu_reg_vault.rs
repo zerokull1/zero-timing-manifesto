@@ -32,6 +32,7 @@ pub unsafe fn wipe_ymm15() {
 
 // Расшифровка USB-блоба 256-битным PIN-ключом непосредственно внутри регистра YMM15 (защита от BadUSB / USB-сниффера)
 #[target_feature(enable = "avx2")]
+#[allow(dead_code)]
 pub unsafe fn unlock_ymm15_with_pin(pin_mask: &mut [u8; 32]) {
     asm!(
         "vmovdqu ymm14, [{ptr}]",
