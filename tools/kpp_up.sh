@@ -19,6 +19,7 @@ mkdir -p /sys/fs/bpf/zero_shield
 rm -f /sys/fs/bpf/zero_shield/*
 echo "$ACTIVE_MODE" > /tmp/zero_xdp_mode.state
 bpftool map pin name whitelist_v4 /sys/fs/bpf/zero_shield/whitelist_v4
+bpftool map pin name blacklist_v4 /sys/fs/bpf/zero_shield/blacklist_v4
 bpftool map pin name config_map   /sys/fs/bpf/zero_shield/config_map
 bpftool map pin name stats_map    /sys/fs/bpf/zero_shield/stats_map
 bpftool map pin name events_ring  /sys/fs/bpf/zero_shield/events_ring

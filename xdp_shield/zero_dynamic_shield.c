@@ -1,6 +1,8 @@
 #include <linux/bpf.h>
 #include <linux/if_ether.h>
 #include <linux/ip.h>
+#include <linux/tcp.h>
+#include <linux/in.h>
 #include <bpf/bpf_helpers.h>
 
 #define MODE_FAIL_OPEN 0
@@ -9,6 +11,15 @@
 
 #define EVENT_TTL_ANOMALY 1
 #define EVENT_RATE_FLOOD  2
+#define EVENT_TCP_SCAN    3
+
+#define ETH_P_8021Q  0x8100
+#define ETH_P_8021AD 0x88A8
+
+struct vlan_hdr {
+    __be16 h_vlan_TCI;
+    __be16 h_vlan_encapsulated_proto;
+};
 
 struct shield_cfg {
     __u32 mode;
@@ -45,6 +56,13 @@ struct {
     __uint(type, BPF_MAP_TYPE_LRU_HASH);
     __uint(max_entries, 65536);
     __type(key, __u32);
+    __type(value, __u8);
+} blacklist_v4 SEC(".maps");
+
+struct {
+    __uint(type, BPF_MAP_TYPE_LRU_HASH);
+    __uint(max_entries, 65536);
+    __type(key, __u32);
     __type(value, struct rate_state);
 } rate_map SEC(".maps");
 
@@ -62,18 +80,12 @@ struct {
     __type(value, struct datarec);
 } stats_map SEC(".maps");
 
-// Кольцевой буфер для пробуждения AI-агента по прерыванию (0% CPU в простое)
 struct {
     __uint(type, BPF_MAP_TYPE_RINGBUF);
     __uint(max_entries, 4096 * 16);
 } events_ring SEC(".maps");
 
-
-
 static __always_inline void emit_alert(__u64 now, __u32 src_ip, __u32 reason) {
-    // Анти-спам: будим AI не чаще 1 раза в 500 мс (500,000,000 нс)
-    
-
     struct alert_event *e = bpf_ringbuf_reserve(&events_ring, sizeof(*e), 0);
     if (!e) return;
     e->timestamp_ns = now;
@@ -97,18 +109,60 @@ int zero_dynamic_filter(struct xdp_md *ctx) {
 
     struct ethhdr *eth = data;
     if ((void *)(eth + 1) > data_end) return XDP_PASS;
-    if (eth->h_proto != __constant_htons(ETH_P_IP)) return XDP_PASS;
 
-    struct iphdr *ip = (void *)(eth + 1);
+    __u16 h_proto = eth->h_proto;
+    void *nh = (void *)(eth + 1);
+
+    // Разбор до 2 вложенных тегов VLAN (802.1Q / 802.1ad QinQ)
+    #pragma unroll
+    for (int i = 0; i < 2; i++) {
+        if (h_proto == __constant_htons(ETH_P_8021Q) || h_proto == __constant_htons(ETH_P_8021AD)) {
+            struct vlan_hdr *vh = nh;
+            if ((void *)(vh + 1) > data_end) return XDP_PASS;
+            h_proto = vh->h_vlan_encapsulated_proto;
+            nh = (void *)(vh + 1);
+        }
+    }
+
+    if (h_proto != __constant_htons(ETH_P_IP)) return XDP_PASS;
+
+    struct iphdr *ip = nh;
     if ((void *)(ip + 1) > data_end) return XDP_PASS;
+    if (ip->ihl < 5) return XDP_DROP;
 
     __u32 src_ip = ip->saddr;
+
+    // 1. Белый список (доверенные хосты)
     if (bpf_map_lookup_elem(&whitelist_v4, &src_ip)) {
         if (stats) stats->whitelisted_packets++;
         return XDP_PASS;
     }
 
+    // 2. Мгновенный чёрный список (blacklist_v4)
+    if (bpf_map_lookup_elem(&blacklist_v4, &src_ip)) {
+        if (stats) stats->dropped_packets++;
+        if (mode == MODE_ENFORCE) return XDP_DROP;
+    }
+
     __u64 now = bpf_ktime_get_ns();
+
+    // 3. Проверка аномальных TCP-сканеров (NULL, XMAS, SYN+FIN)
+    if (ip->protocol == IPPROTO_TCP) {
+        struct tcphdr *tcp = (void *)ip + (ip->ihl * 4);
+        if ((void *)(tcp + 1) <= data_end) {
+            __u8 flags = ((__u8 *)tcp)[13];
+            __u8 is_null = (flags == 0);
+            __u8 is_xmas = ((flags & 0x29) == 0x29); // FIN + PSH + URG
+            __u8 is_syn_fin = ((flags & 0x03) == 0x03); // SYN + FIN
+            if (is_null || is_xmas || is_syn_fin) {
+                if (stats) stats->dropped_packets++;
+                emit_alert(now, src_ip, EVENT_TCP_SCAN);
+                if (mode == MODE_ENFORCE) return XDP_DROP;
+            }
+        }
+    }
+
+    // 4. Защита от флуда по частоте пакетов (LRU Rate-Limit)
     __u32 limit = cfg ? cfg->pps_limit : 0;
     if (limit > 0) {
         struct rate_state *rs = bpf_map_lookup_elem(&rate_map, &src_ip);
@@ -130,6 +184,7 @@ int zero_dynamic_filter(struct xdp_md *ctx) {
         }
     }
 
+    // 5. Проверка TTL-сигнатур тетеринга (65 / 129)
     __u8 ttl = ip->ttl;
     __u32 block_65  = cfg ? cfg->block_ttl_65  : 1;
     __u32 block_129 = cfg ? cfg->block_ttl_129 : 1;

@@ -19,6 +19,7 @@ const BPF_MAP_DELETE_ELEM: usize = 3;
 const BPF_OBJ_GET: usize = 7;
 
 const PATH_WHITELIST: &[u8] = b"/sys/fs/bpf/zero_shield/whitelist_v4\0";
+const PATH_BLACKLIST: &[u8] = b"/sys/fs/bpf/zero_shield/blacklist_v4\0";
 const PATH_CONFIG: &[u8] = b"/sys/fs/bpf/zero_shield/config_map\0";
 const PATH_STATS: &[u8] = b"/sys/fs/bpf/zero_shield/stats_map\0";
 const PATH_RING: &[u8] = b"/sys/fs/bpf/zero_shield/events_ring\0";
@@ -188,7 +189,7 @@ unsafe fn run_watch() -> ! {
                 if (rec_len & (1 << 30)) == 0 {
                     let alert = core::ptr::read_volatile(prod_ptr.add(off + 8) as *const AlertEvent);
                     sys_write(1, b"[ALERT] SRC="); write_ipv4_be(alert.src_ip);
-                    if alert.reason == 2 { sys_write(1, b" | RATE_FLOOD\n"); } else { sys_write(1, b" | TTL_ANOMALY\n"); }
+                    match alert.reason { 2 => sys_write(1, b" | RATE_FLOOD\n"), 3 => sys_write(1, b" | TCP_SCAN\n"), _ => sys_write(1, b" | TTL_ANOMALY\n") }
                 }
                 cons += 8 + aligned;
                 core::ptr::write_volatile(cons_ptr as *mut u64, cons);
@@ -198,7 +199,7 @@ unsafe fn run_watch() -> ! {
 }
 
 fn print_usage() {
-    unsafe { sys_write(1, b"Usage:\n  zero-ctl stats\n  zero-ctl watch\n  zero-ctl allow <IPv4>\n  zero-ctl deny <IPv4>\n  zero-ctl limit <pps>\n  zero-ctl mode <fail-open|monitor|enforce>\n"); }
+    unsafe { sys_write(1, b"Usage:\n  zero-ctl stats\n  zero-ctl watch\n  zero-ctl allow <IPv4>\n  zero-ctl deny <IPv4>\n  zero-ctl ban <IPv4>\n  zero-ctl unban <IPv4>\n  zero-ctl limit <pps>\n  zero-ctl mode <fail-open|monitor|enforce>\n"); }
 }
 
 #[unsafe(naked)]
@@ -233,7 +234,20 @@ unsafe extern "C" fn rust_main(stack_ptr: *const usize) -> ! {
         if argc < 3 { print_usage(); sys_exit(1); }
         let arg = cstr_to_slice(*argv.add(2));
 
-        if cmd == b"allow" || cmd == b"deny" {
+        if cmd == b"allow" || cmd == b"deny" || cmd == b"ban" || cmd == b"unban" {
+            let is_black = cmd == b"ban" || cmd == b"unban";
+            let is_add = cmd == b"allow" || cmd == b"ban";
+            let ip_be = match parse_ipv4_be(arg) { Some(v) => v, None => { sys_write(2, b"[ERR] Invalid IPv4\n"); sys_exit(1); } };
+            let fd = bpf_obj_get(if is_black { PATH_BLACKLIST } else { PATH_WHITELIST });
+            if fd < 0 { sys_write(2, b"[ERR] Cannot open BPF map\n"); sys_exit(1); }
+            let val: u8 = 1;
+            let attr = BpfMapElemAttr { map_fd: fd as u32, _pad: 0, key: &ip_be as *const u32 as u64, value: if is_add { &val as *const u8 as u64 } else { 0 }, flags: 0 };
+            let op = if is_add { BPF_MAP_UPDATE_ELEM } else { BPF_MAP_DELETE_ELEM };
+            if syscall3(SYS_BPF, op, &attr as *const BpfMapElemAttr as usize, core::mem::size_of::<BpfMapElemAttr>()) == 0 {
+                sys_write(1, b"[OK] List updated\n"); sys_exit(0);
+            }
+            sys_write(2, b"[ERR] BPF update failed\n"); sys_exit(1);
+        } else if false {
             let ip_be = match parse_ipv4_be(arg) { Some(v) => v, None => { sys_write(2, b"[ERR] Invalid IPv4\n"); sys_exit(1); } };
             let fd = bpf_obj_get(PATH_WHITELIST);
             if fd < 0 { sys_write(2, b"[ERR] Cannot open whitelist_v4\n"); sys_exit(1); }
