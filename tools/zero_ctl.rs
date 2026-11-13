@@ -113,7 +113,7 @@ unsafe fn bpf_obj_get(path: &[u8]) -> isize {
 }
 
 unsafe fn cstr_to_slice<'a>(ptr: *const u8) -> &'a [u8] {
-    unsafe { core::slice::from_raw_parts(ptr, strlen(ptr)) }
+    unsafe { core::slice::from_raw_parts(ptr, strlen(ptr as *const i8)) }
 }
 
 fn parse_ipv4_be(s: &[u8]) -> Option<u32> {
