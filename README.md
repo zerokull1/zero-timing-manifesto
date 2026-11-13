@@ -27,6 +27,26 @@ flowchart LR
     RING -. "Zero-Alloc Read" .-> TUI["TUI Radar & Watchdog"]
 ```
 
+
+### How the Dynamic XDP Checkpoint (TTL + Rate-Limit + `zero-ctl`) Works
+
+```mermaid
+flowchart LR
+    PKT["Incoming IPv4 Packet<br/>(NIC Driver / XDP)"] --> MODE{"config_map<br/>Shield Mode"}
+    MODE -- "fail-open (0)" --> PASS1["XDP_PASS<br/>(Bypass All Checks)"]
+    MODE -- "enforce (2)" --> WL{"whitelist_v4<br/>eBPF Hash Map"}
+    WL -- "IP Found" --> PASS2["XDP_PASS<br/>(Trusted Host)"]
+    WL -- "Unknown IP" --> RATE{"rate_map (LRU)<br/>PPS > pps_limit?"}
+    RATE -- "Flood (> Limit)" --> ALERT1["events_ring (Wake epoll)<br/>+ XDP_DROP"]
+    RATE -- "Normal Rate" --> TTL{"IPv4 TTL Check<br/>(65 / 129 Tethering)"}
+    TTL -- "TTL == 65 or 129" --> ALERT2["events_ring (Wake epoll)<br/>+ XDP_DROP"]
+    TTL -- "Clean TTL" --> PASS3["XDP_PASS<br/>(To Kernel / AF_XDP)"]
+    CTL["6.5KB zero-ctl<br/>(SYS_bpf / epoll)"] -. "Live Control & Watch" .-> WL
+    CTL -. "Update Limits" .-> RATE
+    ALERT1 -. "0% Idle CPU Push" .-> CTL
+    ALERT2 -. "0% Idle CPU Push" .-> CTL
+```
+
 ## Active Security, Deception & Mutation Pipeline
 
 ```mermaid
