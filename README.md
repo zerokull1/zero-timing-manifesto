@@ -43,9 +43,6 @@ flowchart TD
 
 * **Inline CPU Fast-Path (`27–36 cycles/pkt`):** Branchless `x86_64` ASM L7 DPI (`cmov`), zero-copy `AF_XDP`, and `XDP` kernel ingress filtering make pass/drop decisions in nanoseconds with zero heap allocations.
 * **Asynchronous GPU Sideband (`Out-of-Band`):** Vulkan Compute reads non-temporal `ZERORING` buffers (`vmovntdq`) in the background for Shannon IAT entropy analysis without adding latency to the packet path.
-| `uefi_stage0/` (`BOOTX64.EFI`) | **Beta / Verified** | Bare-metal UEFI Ring-0 Unikernel, PCIe BAR0 NIC TX-DMA (`20 cycles/frame`) |
-| `src/thin_hypervisor.rs` | **R&D Blueprint** | Hardware VT-x / AMD-V Ring -1 hypervisor skeleton |
-| `zero-vault/` (`12 KB ELF`) | **Beta / Verified** | Zero-dependency `no_std` TOTP 2FA, `mlock()` RAM & USB Dead-Man's Switch |
 
 ## 2. Hardware Cycle Benchmarks (`rdtscp + lfence`)
 
@@ -84,6 +81,9 @@ All baseline numbers below were measured on a standard desktop workstation (**In
 ```bash
 # Run full end-to-end verification & benchmark suite
 ./demo_run.sh
+
+# Run fast standalone integrity & branchless ASM audit
+./verify_all.sh
 
 # Build release core binary & pin to isolated CPU core 0
 cargo build --release && taskset -c 0 ./target/release/zero_project
