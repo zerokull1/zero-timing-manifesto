@@ -31,7 +31,7 @@ flowchart LR
 ### How the Dynamic XDP Checkpoint (TTL + Rate-Limit + `zero-ctl`) Works
 
 ```mermaid
-flowchart LR
+flowchart TD
     PKT["Incoming IPv4 Packet<br/>(NIC Driver / XDP)"] --> MODE{"config_map<br/>Shield Mode"}
     MODE -- "fail-open (0)" --> PASS1["XDP_PASS<br/>(Bypass All Checks)"]
     MODE -- "enforce (2)" --> WL{"whitelist_v4<br/>eBPF Hash Map"}
