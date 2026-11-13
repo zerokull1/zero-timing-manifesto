@@ -1,3 +1,6 @@
+// Copyright (c) 2026 zerokull1 (https://github.com)
+// Licensed under GPL-3.0. Unauthorized proprietary use is strictly prohibited.
+
 //! Zero-dependency `no_std` Linux eBPF map controller via raw `SYS_bpf` syscall.
 //! Allows hot-reloading IPv4 whitelists and Fail-Open/Enforce modes without recompilation.
 

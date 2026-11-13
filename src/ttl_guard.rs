@@ -1,3 +1,6 @@
+// Copyright (c) 2026 zerokull1 (https://github.com)
+// Licensed under GPL-3.0. Unauthorized proprietary use is strictly prohibited.
+
 //! Self-Learning Adaptive TTL & DPI-Evasion Guard + Lock-Free IPv4 CIDR Whitelist
 //! (`#![no_std]`, Zero-Alloc, Lock-Free, O(1) Q8.8 EMA)
 

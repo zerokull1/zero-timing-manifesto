@@ -1,3 +1,6 @@
+// Copyright (c) 2026 zerokull1 (https://github.com)
+// Licensed under GPL-3.0. Unauthorized proprietary use is strictly prohibited.
+
 #define _POSIX_C_SOURCE 199309L
 #include <stdio.h>
 #include <stdint.h>

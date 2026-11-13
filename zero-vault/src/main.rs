@@ -1,3 +1,6 @@
+// Copyright (c) 2026 zerokull1 (https://github.com)
+// Licensed under GPL-3.0. Unauthorized proprietary use is strictly prohibited.
+
 #![no_std]
 #![no_main]
 mod base32; mod cpu_reg_vault; mod mem_guard; mod totp; mod usb_watch;

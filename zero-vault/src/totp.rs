@@ -1,3 +1,6 @@
+// Copyright (c) 2026 zerokull1 (https://github.com)
+// Licensed under GPL-3.0. Unauthorized proprietary use is strictly prohibited.
+
 use crate::mem_guard::wipe_secret;
 
 pub fn sha1(data: &[u8]) -> [u8; 20] {

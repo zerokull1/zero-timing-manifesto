@@ -1,3 +1,6 @@
+// Copyright (c) 2026 zerokull1 (https://github.com)
+// Licensed under GPL-3.0. Unauthorized proprietary use is strictly prohibited.
+
 #![allow(dead_code)]
 
 /// Предвычисленная таблица -p * log2(p) в формате фиксированной точки Q16.16

@@ -1,3 +1,6 @@
+// Copyright (c) 2026 zerokull1 (https://github.com)
+// Licensed under GPL-3.0. Unauthorized proprietary use is strictly prohibited.
+
 pub fn decode_base32(input: &[u8], out: &mut [u8]) -> usize {
     let (mut buf, mut bits, mut n) = (0u32, 0u8, 0usize);
     for &b in input {

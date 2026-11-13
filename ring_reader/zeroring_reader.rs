@@ -1,3 +1,6 @@
+// Copyright (c) 2026 zerokull1 (https://github.com)
+// Licensed under GPL-3.0. Unauthorized proprietary use is strictly prohibited.
+
 use std::env;
 use std::fs::OpenOptions;
 use std::sync::atomic::{AtomicU64, Ordering};

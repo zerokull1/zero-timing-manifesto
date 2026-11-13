@@ -1,3 +1,6 @@
+// Copyright (c) 2026 zerokull1 (https://github.com)
+// Licensed under GPL-3.0. Unauthorized proprietary use is strictly prohibited.
+
 // SPDX-License-Identifier: GPL-3.0
 // Zero-Timing ISP Anti-Tethering & Stateful Bypass XDP Shield (Single-File)
 // Compile: clang -O2 -g -target bpf -c isp_ttl65_shield.c -o isp_ttl65_shield.o

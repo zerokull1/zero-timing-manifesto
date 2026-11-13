@@ -1,3 +1,6 @@
+// Copyright (c) 2026 zerokull1 (https://github.com)
+// Licensed under GPL-3.0. Unauthorized proprietary use is strictly prohibited.
+
 #ifndef HYBRID_ABI_H
 #define HYBRID_ABI_H
 #include <stdint.h>

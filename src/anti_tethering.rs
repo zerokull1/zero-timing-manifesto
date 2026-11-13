@@ -1,3 +1,6 @@
+// Copyright (c) 2026 zerokull1 (https://github.com)
+// Licensed under GPL-3.0. Unauthorized proprietary use is strictly prohibited.
+
 #![allow(dead_code)]
 
 /// Вердикт детектора раздачи интернета (Zero-Timing Anti-Tethering Engine)

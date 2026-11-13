@@ -1,3 +1,6 @@
+// Copyright (c) 2026 zerokull1 (https://github.com)
+// Licensed under GPL-3.0. Unauthorized proprietary use is strictly prohibited.
+
 #![no_std]
 #![deny(unsafe_op_in_unsafe_fn)]
 use core::arch::asm;
