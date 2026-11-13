@@ -46,3 +46,23 @@ While the research core is available under **GPL-3.0**, enterprise customers can
 
 * **Free 14-Day PoC:** Test Zero-Shield or Zero-Bridge on a SPAN port (mirrored traffic) or replay your own `.pcap` captures.
 * **Contact & Inquiries:** Open a ticket via GitHub Issues or request a private evaluation package.
+
+---
+
+## 5. Runtime Control Plane (Zero-Downtime Rule Updates)
+
+Using `xdp_shield/zero_dynamic_shield.c` and `src/bpf_control.rs` (raw `SYS_bpf` syscalls), operators can modify filtering rules at runtime without reloading XDP hooks or dropping active connections:
+
+```bash
+# Compile dynamic XDP module with BTF metadata
+clang -O2 -g -target bpf -c xdp_shield/zero_dynamic_shield.c -o xdp_shield/zero_dynamic_shield.o
+
+# Hot-add trusted IPv4 (e.g., 10.99.0.2) to O(1) whitelist map
+sudo bpftool map update name whitelist_v4 key hex 0a 63 00 02 value hex 01
+
+# Instant Fail-Open switch (mode=0) or Enforce mode (mode=2)
+sudo bpftool map update name config_map key hex 00 00 00 00 value hex 02 00 00 00  01 00 00 00  01 00 00 00
+
+# Read lock-free per-CPU packet counters
+sudo bpftool map dump name stats_map
+```

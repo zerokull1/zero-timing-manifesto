@@ -3,6 +3,8 @@
 #![no_main]
 
 mod tsc;
+#[allow(dead_code)]
+mod bpf_control;
 mod core_engine;
 mod entropy_cpu;
 mod smp_stress;
