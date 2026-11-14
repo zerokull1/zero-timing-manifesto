@@ -16,27 +16,12 @@ int tc_egress_mutagen(struct __sk_buff *skb) {
 
     struct iphdr *iph = (void *)(eth + 1);
     if ((void *)(iph + 1) > data_end) return TC_ACT_OK;
-
-    // Не трогаем локальный трафик
     if ((iph->daddr & bpf_htonl(0xFF000000)) == bpf_htonl(0x7F000000)) return TC_ACT_OK;
 
-    __u32 rnd = bpf_get_prandom_u32();
-
-    // 1. Мутация IPv4 Identification на выходе из сетевой карты с пересчётом контрольной суммы ядра
-    __be16 old_id = iph->id;
-    __be16 new_id = (__be16)(rnd & 0xFFFF);
-    iph->id = new_id;
-    bpf_l3_csum_replace(skb, sizeof(*eth) + offsetof(struct iphdr, check), old_id, new_id, 2);
-
-    // 2. Плавающий TTL (58..64) для маскировки отпечатка ОС на магистрали без поломки маршрутизации
-    data = (void *)(long)skb->data;
-    data_end = (void *)(long)skb->data_end;
-    eth = data; iph = (void *)(eth + 1);
-    if ((void *)(iph + 1) > data_end) return TC_ACT_OK;
-
-    if (iph->ttl >= 60) {
+    // На выходе из физической NIC нормализуем TTL обратно в стандартный 64 (как у обычного Linux-хоста)
+    if (iph->ttl != 64) {
         __u8 old_ttl = iph->ttl;
-        __u8 new_ttl = (__u8)(58 + ((rnd >> 16) & 0x06));
+        __u8 new_ttl = 64;
         __be16 old_w = bpf_htons(((__u16)old_ttl << 8) | iph->protocol);
         __be16 new_w = bpf_htons(((__u16)new_ttl << 8) | iph->protocol);
         iph->ttl = new_ttl;
