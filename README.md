@@ -119,3 +119,20 @@ UQBTjCDPiQIUl73F_1f-3ArppvjdfJ7mfONIyfDZl5d9z66Z
 * **Cold RAM / 512MB TLB Thrashing (65,536 pages with `mprotect(PROT_NONE)` guard pages):** **34.92 Mpps** (**28.64 ns/frame**, **0 SIGSEGV**).
 * **Structural Guard-Page Fuzzing (2,500,645 mutated TCP/TLS/QUIC frames on unaligned pointers):** **0 out-of-bounds reads**, 0 data races across 4 threads.
 * **Standalone On-Demand XDP Module (`mutagen_wire_mod/`):** hot-swappable (`mutagen-ctl on/off`) L2/L3 wire mutagen with zero-overhead `XDP_PASS` bypass when inactive.
+
+### End-to-End Data Protection Pipeline (`Wire / Kernel / Ring 0 / Ring -1 / GPU`)
+```text
+[Physical Wire]
+       │
+       ▼
+  mutagen_wire_mod/  ──▶ Hot-swappable L2/L3 wire mutation/demutation at NIC edge (On-Demand XDP)
+       │
+       ▼
+  xdp_shield/        ──▶ Early anomaly drop & TTL-GUARD inside Linux Kernel (eBPF JIT)
+       │
+       ▼
+  src/l7_shield.rs   ──▶ Branchless L7 DPI in no_std Rust + x86_64 ASM / AVX-512 (23.6 ns/frame)
+       │
+       ├──▶ gpu_offload/      ──▶ Async Shannon Entropy over IAT on Vulkan Compute Sideband
+       └──▶ thin_hypervisor/  ──▶ Hardware Ring -1 code isolation (EPT Execute-Only + IPMI KCS)
+```
