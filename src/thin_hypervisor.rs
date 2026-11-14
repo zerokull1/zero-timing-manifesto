@@ -392,3 +392,57 @@ pub fn classify_vmexit_branchless(backend: HypervisorBackend, exit_reason: u32) 
     }
     if verdict == 1 { VmExitVerdict::SecurityViolationTrap } else { VmExitVerdict::AdvanceGuestRip }
 }
+
+// ============================================================================
+// Intel CAT (Cache Allocation Technology) для стоечных Xeon Scalable / Xeon D
+// ============================================================================
+const MSR_IA32_PQR_ASSOC: u32 = 0x0C8F;
+const MSR_IA32_L3_MASK_0: u32  = 0x0C90;
+
+/// Проверка аппаратной поддержки Intel L3 Cache Allocation Technology (CPUID.(EAX=10H, ECX=0):EBX[bit 1])
+#[inline(always)]
+pub unsafe fn cpu_supports_intel_cat_l3() -> bool { unsafe {
+    let max_leaf: u32;
+    asm!(
+        "push rbx",
+        "xor eax, eax",
+        "cpuid",
+        "pop rbx",
+        out("eax") max_leaf,
+        out("ecx") _,
+        out("edx") _,
+        options(nomem, nostack)
+    );
+    if max_leaf < 0x10 {
+        return false;
+    }
+    let ebx10: u32;
+    asm!(
+        "push rbx",
+        "mov eax, 0x10",
+        "xor ecx, ecx",
+        "cpuid",
+        "mov {out_ebx:e}, ebx",
+        "pop rbx",
+        out_ebx = out(reg) ebx10,
+        out("eax") _,
+        out("ecx") _,
+        out("edx") _,
+        options(nomem, nostack)
+    );
+    (ebx10 & (1 << 1)) != 0
+}}
+
+/// Привязка текущего data-plane ядра стойки к эксклюзивному пулу путей L3-кэша (CLOS) из Ring -1.
+/// Защищает ZERORING и таблицы L7 DPI от вытеснения из LLC шумными соседями.
+#[inline(always)]
+pub unsafe fn pin_rack_l3_cache_clos(clos_id: u32, way_bitmask: u32) -> bool { unsafe {
+    if !cpu_supports_intel_cat_l3() || clos_id > 15 || way_bitmask == 0 {
+        return false;
+    }
+    wrmsr(MSR_IA32_L3_MASK_0 + clos_id, way_bitmask as u64);
+    let mut pqr = rdmsr(MSR_IA32_PQR_ASSOC);
+    pqr = (pqr & 0x0000_0000_FFFF_FFFF) | ((clos_id as u64) << 32);
+    wrmsr(MSR_IA32_PQR_ASSOC, pqr);
+    true
+}}

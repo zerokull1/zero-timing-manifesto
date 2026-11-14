@@ -200,3 +200,99 @@ pub unsafe fn inspect_quic_l7_asm(payload_ptr: *const u8, len: usize) -> u64 { u
 
     verdict
 }}
+
+/// Проверка аппаратной поддержки AVX-512F + AVX-512BW и разрешения в XCR0 (ZMM0..ZMM31)
+#[inline(always)]
+pub unsafe fn cpu_supports_avx512bw() -> bool { unsafe {
+    let ecx1: u32;
+    asm!(
+        "push rbx",
+        "mov eax, 1",
+        "cpuid",
+        "pop rbx",
+        out("ecx") ecx1,
+        out("eax") _,
+        out("edx") _,
+        options(nomem, nostack)
+    );
+    // Проверяем OSXSAVE (bit 27)
+    if (ecx1 & (1 << 27)) == 0 {
+        return false;
+    }
+
+    // Проверяем XCR0: биты SSE(1), AVX(2), OPMASK(5), ZMM_HI256(6), HI16_ZMM(7) -> маска 0xE6
+    let xcr0_lo: u32;
+    asm!("xor ecx, ecx", "xgetbv", out("eax") xcr0_lo, out("edx") _, out("ecx") _, options(nomem, nostack));
+    if (xcr0_lo & 0xE6) != 0xE6 {
+        return false;
+    }
+
+    // CPUID.(EAX=07H, ECX=0):EBX -> AVX512F (bit 16) + AVX512BW (bit 30)
+    let ebx7: u32;
+    asm!(
+        "push rbx",
+        "mov eax, 7",
+        "xor ecx, ecx",
+        "cpuid",
+        "mov {out_ebx:e}, ebx",
+        "pop rbx",
+        out_ebx = out(reg) ebx7,
+        out("eax") _,
+        out("ecx") _,
+        out("edx") _,
+        options(nomem, nostack)
+    );
+    let mask = (1 << 16) | (1 << 30);
+    (ebx7 & mask) == mask
+}}
+
+/// Поиск сигнатуры 'c' (0x63, начало "chunked\r") сразу по всей 64-байтной кэш-линии L1 через AVX-512 (zmm0).
+/// Возвращает 64-битную битовую маску совпадений (1 бит = 1 байт в кэш-линии).
+#[target_feature(enable = "avx512f,avx512bw")]
+#[inline]
+pub unsafe fn scan_cacheline_byte_avx512(ptr: *const u8, needle: u8) -> u64 { unsafe {
+    let mask64: u64;
+    let needle_broadcast: u32 = (needle as u32) * 0x0101_0101;
+    asm!(
+        "vmovd {xmm_tmp}, {ndl:e}",
+        "vpbroadcastd zmm1, {xmm_tmp}",
+        "vmovdqu64 zmm0, zmmword ptr [{p}]",
+        "vpcmpeqb k1, zmm0, zmm1",
+        "kmovq {out_mask}, k1",
+        "vzeroupper",
+        p = in(reg) ptr,
+        ndl = in(reg) needle_broadcast,
+        xmm_tmp = out(xmm_reg) _,
+        out_mask = out(reg) mask64,
+        out("zmm0") _,
+        out("zmm1") _,
+        out("k1") _,
+        options(nostack)
+    );
+    mask64
+}}
+
+/// Всеядный стоечный L7-инспектор:
+/// На Intel Xeon Scalable / AMD EPYC Zen 4/5 ускоряет поиск HTTP Smuggling по 64-байтной кэш-линии через AVX-512,
+/// на Haswell / VM без AVX-512 бесшовно исполняет 64-битный GPR fast-path.
+#[inline(always)]
+pub unsafe fn inspect_l7_payload_adaptive(payload: *const u8, len: usize, dst_port: u16) -> L7Verdict { unsafe {
+    if dst_port == 80 && len >= 64 && !payload.is_null() && cpu_supports_avx512bw() {
+        let q0 = (payload as *const u64).read_unaligned();
+        if (q0 & MASK_5_BYTES) == (SIG_POST_SPACE & MASK_5_BYTES) {
+            let mut hits = scan_cacheline_byte_avx512(payload, b'c');
+            while hits != 0 {
+                let idx = hits.trailing_zeros() as usize;
+                if idx + 8 <= 64 {
+                    let cand = (payload.add(idx) as *const u64).read_unaligned();
+                    if cand == SIG_TE_CHUNKED {
+                        return L7Verdict::BlockedHttpSmuggling;
+                    }
+                }
+                hits &= hits - 1;
+            }
+            return L7Verdict::CleanPass;
+        }
+    }
+    inspect_l7_payload_asm(payload, len, dst_port)
+}}
