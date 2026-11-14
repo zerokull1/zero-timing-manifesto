@@ -6,7 +6,7 @@
 ![Arch](https://shields.io)
 ![License](https://shields.io)
 
-**Deterministic, ultra-low-latency `no_std` Rust (2024 Edition) data-plane core and `x86_64` bare-metal architectural blueprint.**
+**Deterministic, ultra-low-latency `no_std` Rust (2024 Edition) data-plane core and `x86_64` bare-metal data-plane core & Ring -1 micro-hypervisor.**
 
 > **Language:** **English** | [Русская версия (`README.ru.md`)](README.ru.md)  
 > **Hardware Logs:** Raw `lscpu`, `/proc/meminfo`, and execution telemetry are archived in [`docs/BENCHMARK_LOGS.md`](docs/BENCHMARK_LOGS.md).
