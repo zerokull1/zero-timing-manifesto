@@ -5,3 +5,4 @@ ring_reader/zeroring_reader
 uefi_stage0/Cargo.lock
 *.o
 dist/
+build_core_bundle/
