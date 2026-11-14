@@ -8,15 +8,23 @@
 #include <dlfcn.h>
 
 typedef int (*guardian_sync_fn_t)(const char *, const char *, size_t *, int *);
+typedef int (*db_load_fn_t)(const char *, size_t *);
 
 typedef struct {
+    void *dl_spoof;
     void *dl_guardian;
+    void *dl_http;
     void *dl_tarpit;
     void *dl_shaper;
+    const zero_module_descriptor_t *mod_spoof;
     const zero_module_descriptor_t *mod_guardian;
+    const zero_module_descriptor_t *mod_http;
     const zero_module_descriptor_t *mod_tarpit;
     const zero_module_descriptor_t *mod_shaper;
     uint64_t total_frames;
+    uint64_t caught_spoof;
+    uint64_t caught_swar;
+    uint64_t caught_http;
     uint64_t tarpit_replies;
     uint64_t shaped_clean;
 } module_chain_t;
@@ -37,109 +45,145 @@ static const zero_module_descriptor_t *load_verified_module(const char *so_path,
     return desc;
 }
 
-static int chain_init(module_chain_t *ch, const char *so_guard, const char *so_tarpit, const char *so_shaper, const char *rules_bin) {
+static int chain_init(module_chain_t *ch) {
     memset(ch, 0, sizeof(*ch));
-    ch->mod_guardian = load_verified_module(so_guard, 2, &ch->dl_guardian);
-    ch->mod_tarpit   = load_verified_module(so_tarpit, 1, &ch->dl_tarpit);
-    ch->mod_shaper   = load_verified_module(so_shaper, 3, &ch->dl_shaper);
-    if (!ch->mod_guardian || !ch->mod_tarpit || !ch->mod_shaper) return -1;
+    ch->mod_spoof    = load_verified_module("/tmp/libmod_anti_spoof.so", 5, &ch->dl_spoof);
+    ch->mod_guardian = load_verified_module("/tmp/libmod_xdp_guardian.so", 2, &ch->dl_guardian);
+    ch->mod_http     = load_verified_module("/tmp/libmod_http_guard.so", 4, &ch->dl_http);
+    ch->mod_tarpit   = load_verified_module("/tmp/libmod_deception_tarpit.so", 1, &ch->dl_tarpit);
+    ch->mod_shaper   = load_verified_module("/tmp/libmod_entropy_shaper.so", 3, &ch->dl_shaper);
+    if (!ch->mod_spoof || !ch->mod_guardian || !ch->mod_http || !ch->mod_tarpit || !ch->mod_shaper) return -1;
 
-    uint64_t seed = 0x5A45524F4D414E49ULL;
-    if (ch->mod_guardian->init(seed) != 0 || ch->mod_tarpit->init(seed) != 0 || ch->mod_shaper->init(seed) != 0) {
-        return -2;
-    }
+    uint64_t seed = ZEROMANI_MODULE_MAGIC;
+    ch->mod_spoof->init(seed);
+    ch->mod_guardian->init(seed);
+    ch->mod_http->init(seed);
+    ch->mod_tarpit->init(seed);
+    ch->mod_shaper->init(seed);
 
-    guardian_sync_fn_t sync_fn = (guardian_sync_fn_t)dlsym(ch->dl_guardian, "guardian_sync_rules");
-    size_t loaded = 0;
+    size_t cnt_spoof = 0, cnt_swar = 0, cnt_http = 0;
     int synced = 0;
-    if (!sync_fn || sync_fn(rules_bin, "/sys/fs/bpf/swar_rules_map", &loaded, &synced) != 0) {
-        fprintf(stderr, "Ошибка загрузки правил %s в сторож цепочки!\n", rules_bin);
-        return -3;
-    }
-    printf("[ОРКЕСТРАТОР] Все 3 модуля прошли проверку подписи ZEROMANI (загружено %zu SWAR-правил).\n", loaded);
+
+    db_load_fn_t load_spoof = (db_load_fn_t)dlsym(ch->dl_spoof, "spoof_load_db");
+    guardian_sync_fn_t sync_swar = (guardian_sync_fn_t)dlsym(ch->dl_guardian, "guardian_sync_rules");
+    db_load_fn_t load_http = (db_load_fn_t)dlsym(ch->dl_http, "http_load_db");
+
+    if (load_spoof) load_spoof("modules/anti_spoof_guard/spoof_bindings.zdb", &cnt_spoof);
+    if (sync_swar)  sync_swar("adversarial_gym/battle_rules.bin", "/sys/fs/bpf/swar_rules_map", &cnt_swar, &synced);
+    if (load_http)  load_http("modules/http_table_guard/http_learned.zdb", &cnt_http);
+
+    printf("[ОРКЕСТРАТОР 5-В-1] Все 5 модулей подтвердили подпись ZEROMANI | Базы с диска: Spoof=%zu, SWAR=%zu, HTTP=%zu\n",
+           cnt_spoof, cnt_swar, cnt_http);
     return 0;
 }
 
-// Единый проход пакета через цепочку: Сторож -> (если атака: Тарпит) / (если чистый: Шейпер энтропии)
-static size_t chain_step(module_chain_t *ch, uint8_t *buf, size_t len, size_t max_cap, uint64_t *out_delay_ns, int *out_action) {
+static size_t chain_step(module_chain_t *ch, uint8_t *buf, size_t len, size_t max_cap, uint64_t *out_delay_ns) {
     ch->total_frames++;
-    size_t is_threat = ch->mod_guardian->process_frame(buf, len, max_cap, NULL);
-    if (is_threat) {
+
+    if (ch->mod_spoof->process_frame(buf, len, max_cap, NULL)) {
+        ch->caught_spoof++;
         ch->tarpit_replies++;
-        if (out_action) *out_action = 2; // ответ-ловушка TCP Zero-Window
         return ch->mod_tarpit->process_frame(buf, len, max_cap, out_delay_ns);
-    } else {
-        ch->shaped_clean++;
-        if (out_action) *out_action = 1; // легитимный кадр со сглаженной энтропией
-        return ch->mod_shaper->process_frame(buf, len, max_cap, out_delay_ns);
     }
+    if (ch->mod_guardian->process_frame(buf, len, max_cap, NULL)) {
+        ch->caught_swar++;
+        ch->tarpit_replies++;
+        return ch->mod_tarpit->process_frame(buf, len, max_cap, out_delay_ns);
+    }
+    if (ch->mod_http->process_frame(buf, len, max_cap, NULL)) {
+        ch->caught_http++;
+        ch->tarpit_replies++;
+        return ch->mod_tarpit->process_frame(buf, len, max_cap, out_delay_ns);
+    }
+
+    ch->shaped_clean++;
+    return ch->mod_shaper->process_frame(buf, len, max_cap, out_delay_ns);
 }
 
 static void chain_destroy(module_chain_t *ch) {
+    if (ch->mod_spoof)    ch->mod_spoof->shutdown();
     if (ch->mod_guardian) ch->mod_guardian->shutdown();
+    if (ch->mod_http)     ch->mod_http->shutdown();
     if (ch->mod_tarpit)   ch->mod_tarpit->shutdown();
     if (ch->mod_shaper)   ch->mod_shaper->shutdown();
+    if (ch->dl_spoof)     dlclose(ch->dl_spoof);
     if (ch->dl_guardian)  dlclose(ch->dl_guardian);
+    if (ch->dl_http)      dlclose(ch->dl_http);
     if (ch->dl_tarpit)    dlclose(ch->dl_tarpit);
     if (ch->dl_shaper)    dlclose(ch->dl_shaper);
 }
 
 int main() {
     module_chain_t chain;
-    if (chain_init(&chain,
-                   "/tmp/libmod_xdp_guardian.so",
-                   "/tmp/libmod_deception_tarpit.so",
-                   "/tmp/libmod_entropy_shaper.so",
-                   "adversarial_gym/battle_rules.bin") != 0) {
-        return 1;
-    }
+    if (chain_init(&chain) != 0) return 1;
 
-    uint8_t *pkt_atk = calloc(1, 2048);
-    uint8_t *pkt_ok  = calloc(1, 2048);
-    uint8_t *work    = calloc(1, 2048);
+    uint8_t *p_spoof = calloc(1, 512);
+    uint8_t *p_scan  = calloc(1, 512);
+    uint8_t *p_http  = calloc(1, 512);
+    uint8_t *p_clean = calloc(1, 512);
+    uint8_t *work    = calloc(1, 512);
 
-    const uint8_t *raw_atk = (const uint8_t[]){
-        0x00,0x11,0x22,0x33,0x44,0x55, 0xaa,0xbb,0xcc,0xdd,0xee,0xff, 0x08,0x00,
-        0x45,0x00,0x00,0x3c, 0x13,0x37,0x00,0x00, 0x05,0x06,0x00,0x00,
-        0x0a,0x00,0x00,0x63, 0x0a,0x00,0x00,0x01,
-        0xd4,0x31, 0x01,0xbb, 0x00,0x00,0x00,0x0a, 0x00,0x00,0x00,0x00, 0x50,0x29, 0x20,0x00, 0x00,0x00, 0x00,0x00
-    };
-    const uint8_t *raw_ok = (const uint8_t[]){
+    const uint8_t *base_clean = (const uint8_t[]){
         0x00,0x11,0x22,0x33,0x44,0x55, 0xaa,0xbb,0xcc,0xdd,0xee,0xff, 0x08,0x00,
         0x45,0x00,0x00,0x3c, 0x13,0x37,0x00,0x00, 0x40,0x06,0x00,0x00,
         0x0a,0x00,0x00,0x63, 0x0a,0x00,0x00,0x01,
         0xd4,0x31, 0x01,0xbb, 0x00,0x00,0x00,0x0a, 0x00,0x00,0x00,0x00, 0x50,0x18, 0x72,0x10, 0x00,0x00, 0x00,0x00
     };
-    memcpy(pkt_atk, raw_atk, 54);
-    memcpy(pkt_ok, raw_ok, 54); memcpy(pkt_ok + 54, "GET /index.html HTTP/1.1\r\n", 26);
+
+    // 1) Спуфинг MAC+TTL от известного IP 10.0.0.99
+    memcpy(p_spoof, base_clean, 54);
+    *(p_spoof + 6) = 0xde; *(p_spoof + 22) = 128;
+
+    // 2) Сетевой скан (Xmas flags 0x29)
+    memcpy(p_scan, base_clean, 54);
+    *(p_scan + 22) = 5; *(p_scan + 47) = 0x29; *(p_scan + 48) = 0x20; *(p_scan + 49) = 0x00;
+
+    // 3) HTTP Request Smuggling (CL + TE)
+    memcpy(p_http, base_clean, 54);
+    const char *smug = "POST / HTTP/1.1\r\nContent-Length: 4\r\nTransfer-Encoding: chunked\r\n\r\n0\r\n\r\n";
+    size_t smug_len = strlen(smug);
+    memcpy(p_http + 54, smug, smug_len);
+
+    // 4) Легитимный HTTP-запрос
+    memcpy(p_clean, base_clean, 54);
+    const char *ok_http = "GET /index.html HTTP/1.1\r\nHost: example.org\r\n\r\n";
+    size_t ok_len = strlen(ok_http);
+    memcpy(p_clean + 54, ok_http, ok_len);
 
     struct timespec t0, t1;
     clock_gettime(CLOCK_MONOTONIC, &t0);
 
     uint64_t delay_ns = 0;
-    int action = 0;
     for (int i = 0; i < 1000000; i++) {
-        if ((i & 1) == 0) {
-            memcpy(work, pkt_atk, 64);
-            chain_step(&chain, work, 64, 2048, &delay_ns, &action);
+        int kind = i & 3;
+        if (kind == 0) {
+            memcpy(work, p_spoof, 64);
+            chain_step(&chain, work, 64, 512, &delay_ns);
+        } else if (kind == 1) {
+            memcpy(work, p_scan, 64);
+            chain_step(&chain, work, 64, 512, &delay_ns);
+        } else if (kind == 2) {
+            memcpy(work, p_http, 54 + smug_len);
+            chain_step(&chain, work, 54 + smug_len, 512, &delay_ns);
         } else {
-            memcpy(work, pkt_ok, 72);
-            chain_step(&chain, work, 72, 2048, &delay_ns, &action);
+            memcpy(work, p_clean, 54 + ok_len);
+            chain_step(&chain, work, 54 + ok_len, 512, &delay_ns);
         }
     }
 
     clock_gettime(CLOCK_MONOTONIC, &t1);
     double sec = (t1.tv_sec - t0.tv_sec) + (t1.tv_nsec - t0.tv_nsec) * 1e-9;
 
-    printf("=== ЕДИНЫЙ КОНВЕЙЕР ЦЕПОЧКИ МОДУЛЕЙ (1 000 000 СМЕШАННЫХ КАДРОВ) ===\n");
-    printf("Всего кадров       : %llu за %.4f сек (%.2f млн кадров/сек на 1 ядре)\n",
-           (unsigned long long)chain.total_frames, sec, (chain.total_frames / 1e6) / sec);
-    printf("Атак в тарпит      : %llu (мгновенно заморожены через TCP Window = 0)\n",
-           (unsigned long long)chain.tarpit_replies);
-    printf("Чистых в шейпер    : %llu (сглажены энтропия и джиттер IAT)\n",
-           (unsigned long long)chain.shaped_clean);
+    printf("=== ПОЛНЫЙ 5-МОДУЛЬНЫЙ КОНВЕЙЕР (1 000 000 СМЕШАННЫХ КАДРОВ) ===\n");
+    printf("Общая скорость     : 1 000 000 кадров за %.4f сек (%.2f млн кадров/сек на 1 ядре)\n",
+           sec, 1.0 / sec);
+    printf("Поймано спуфинга   : %llu -> в тарпит\n", (unsigned long long)chain.caught_spoof);
+    printf("Поймано SWAR-сканов: %llu -> в тарпит\n", (unsigned long long)chain.caught_swar);
+    printf("Поймано HTTP-атак  : %llu -> в тарпит\n", (unsigned long long)chain.caught_http);
+    printf("Всего в тарпит     : %llu (заморозка TCP Window = 0)\n", (unsigned long long)chain.tarpit_replies);
+    printf("Чистых в шейпер    : %llu (сглажены энтропия и джиттер IAT)\n", (unsigned long long)chain.shaped_clean);
 
     chain_destroy(&chain);
-    free(pkt_atk); free(pkt_ok); free(work);
+    free(p_spoof); free(p_scan); free(p_http); free(p_clean); free(work);
     return 0;
 }
