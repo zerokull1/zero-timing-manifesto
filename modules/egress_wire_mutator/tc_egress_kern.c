@@ -19,9 +19,9 @@ int tc_egress_mutagen(struct __sk_buff *skb) {
     if ((iph->daddr & bpf_htonl(0xFF000000)) == bpf_htonl(0x7F000000)) return TC_ACT_OK;
 
     // На выходе из физической NIC нормализуем TTL обратно в стандартный 64 (как у обычного Linux-хоста)
-    if (iph->ttl != 64) {
+    if (iph->ttl != 65) {
         __u8 old_ttl = iph->ttl;
-        __u8 new_ttl = 64;
+        __u8 new_ttl = 65;
         __be16 old_w = bpf_htons(((__u16)old_ttl << 8) | iph->protocol);
         __be16 new_w = bpf_htons(((__u16)new_ttl << 8) | iph->protocol);
         iph->ttl = new_ttl;
