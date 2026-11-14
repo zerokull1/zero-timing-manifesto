@@ -212,6 +212,14 @@ pub extern "efiapi" fn efi_main(image_handle: EfiHandle, system_table: *const Ef
                 serial_write_bytes(b" | EPT_XO=1 | TrapTest=");
                 serial_write_u64(trap as u64);
                 serial_write_bytes(b" [OK]\r\n");
+                let (_, v_ebx, v_ecx, v_edx) = thin_hypervisor::emulate_cpuid_vmexit(0, 0);
+                let mut vendor = [0u8; 12];
+                vendor[0..4].copy_from_slice(&v_ebx.to_le_bytes());
+                vendor[4..8].copy_from_slice(&v_edx.to_le_bytes());
+                vendor[8..12].copy_from_slice(&v_ecx.to_le_bytes());
+                serial_write_bytes(b"[RING -1] CPUID.00H Spoofed Vendor : ");
+                serial_write_bytes(&vendor);
+                serial_write_bytes(b"\r\n");
             }
             Err(code) => {
                 serial_write_bytes(b"[RING -1] Restricted/Fallback Mode (code=");

@@ -446,3 +446,37 @@ pub unsafe fn pin_rack_l3_cache_clos(clos_id: u32, way_bitmask: u32) -> bool { u
     wrmsr(MSR_IA32_PQR_ASSOC, pqr);
     true
 }}
+
+/// Эмуляция перехвата инструкции CPUID (Exit Reason 10) в Ring -1 гипервизоре.
+/// При запросе CPUID.00H (Vendor String) подменяет "GenuineIntel" / "AuthenticAMD"
+/// на кастомную сигнатуру гипервизора "ZeroTIMING!!" в регистрах EBX:EDX:ECX.
+#[inline(always)]
+pub fn emulate_cpuid_vmexit(leaf: u32, subleaf: u32) -> (u32, u32, u32, u32) {
+    if leaf == 0 {
+        // 12 байт "ZeroTIMING!!" в порядке x86 CPUID: EBX (bytes 0..4), EDX (bytes 4..8), ECX (bytes 8..12)
+        let ebx = u32::from_le_bytes(*b"Zero");
+        let edx = u32::from_le_bytes(*b"TIMI");
+        let ecx = u32::from_le_bytes(*b"NG!!");
+        (0x16, ebx, ecx, edx)
+    } else {
+        let (mut eax, mut ebx, mut ecx, mut edx): (u32, u32, u32, u32);
+        unsafe {
+            asm!(
+                "push rbx",
+                "cpuid",
+                "mov {out_ebx:e}, ebx",
+                "pop rbx",
+                inout("eax") leaf => eax,
+                out_ebx = out(reg) ebx,
+                inout("ecx") subleaf => ecx,
+                out("edx") edx,
+                options(nomem, nostack)
+            );
+        }
+        // При запросе CPUID.01H выставляем бит Hypervisor Present (ECX bit 31)
+        if leaf == 1 {
+            ecx |= 1 << 31;
+        }
+        (eax, ebx, ecx, edx)
+    }
+}
