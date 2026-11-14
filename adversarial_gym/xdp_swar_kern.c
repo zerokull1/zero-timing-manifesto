@@ -20,7 +20,7 @@ struct {
 
 struct {
     __uint(type, BPF_MAP_TYPE_ARRAY);
-    __uint(max_entries, 2); // [0] = XDP_PASS, [1] = XDP_DROP
+    __uint(max_entries, 2);
     __type(key, __u32);
     __type(value, __u64);
 } xdp_stats_map SEC(".maps");
@@ -47,7 +47,6 @@ int xdp_swar_shield(struct xdp_md *ctx) {
         __u64 word = 0;
         __builtin_memcpy(&word, ptr, 8);
         if ((word & r->mask) == r->pattern) {
-            __sync_fetch_and_add(&r->hits, 1);
             __u32 drop_k = 1;
             __u64 *drops = bpf_map_lookup_elem(&xdp_stats_map, &drop_k);
             if (drops) __sync_fetch_and_add(drops, 1);
