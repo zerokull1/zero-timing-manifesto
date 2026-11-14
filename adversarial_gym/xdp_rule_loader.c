@@ -47,6 +47,12 @@ int main(int argc, char **argv) {
     if (cmd == 'l' && argc >= 3) {
         FILE *f = fopen(*(argv + 2), "rb");
         if (!f) { perror("fopen"); return 1; }
+        uint64_t hdr = 0;
+        if (fread(&hdr, 8, 1, f) != 1 || hdr != 0x494E414D4F52455AULL) {
+            fprintf(stderr, "Ошибка: неверная авторская подпись файла правил!\n");
+            fclose(f);
+            return 1;
+        }
         struct learned_rule r;
         uint32_t idx = 0;
         while (idx < 16 && fread(&r, sizeof(r), 1, f) == 1) {
