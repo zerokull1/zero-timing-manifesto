@@ -1,10 +1,9 @@
-// Copyright (c) 2026 zerokull1 (https://github.com)
-// Licensed under GPL-3.0. Unauthorized proprietary use is strictly prohibited.
-
 #![no_std]
 #![no_main]
 
 mod pci_nic;
+#[path = "../src/thin_hypervisor.rs"]
+mod thin_hypervisor;
 use core::arch::asm;
 
 type EfiStatus = usize;
@@ -197,6 +196,29 @@ pub extern "efiapi" fn efi_main(image_handle: EfiHandle, system_table: *const Ef
         serial_write_bytes(b"[OK] Interrupts masked (cli). Pure Polling Mode engaged.\r\n");
         lock_hardware_nxe_and_smram();
         serial_write_bytes(b"[SEC] Hardware EFER.NXE Enabled + SMRAM D_LCK Locked [OK]\r\n");
+
+        static mut RACK_CORE0_CTX: thin_hypervisor::PerCoreRackContext = thin_hypervisor::PerCoreRackContext::new();
+        static mut RACK_EPT_PT: thin_hypervisor::EptPageTable = thin_hypervisor::EptPageTable::new();
+        let ctx_ptr = core::ptr::addr_of_mut!(RACK_CORE0_CTX);
+        match thin_hypervisor::arm_rack_core_ring_minus_1(&mut *ctx_ptr) {
+            Ok(backend) => {
+                let code_phys = (ring0_inspect_packet as *const () as usize) as u64;
+                (*core::ptr::addr_of_mut!(RACK_EPT_PT)).map_execute_only_4k(0, code_phys);
+                let trap = thin_hypervisor::classify_vmexit_branchless(backend, 48);
+                serial_write_bytes(b"[RING -1] Hardware Hypervisor Armed! Backend=");
+                serial_write_u64(backend as u64);
+                serial_write_bytes(b" | APIC_ID=");
+                serial_write_u64((*ctx_ptr).apic_id as u64);
+                serial_write_bytes(b" | EPT_XO=1 | TrapTest=");
+                serial_write_u64(trap as u64);
+                serial_write_bytes(b" [OK]\r\n");
+            }
+            Err(code) => {
+                serial_write_bytes(b"[RING -1] Restricted/Fallback Mode (code=");
+                serial_write_u64(code as u64);
+                serial_write_bytes(b")\r\n");
+            }
+        }
         if let Some((bar0, mac, _st)) = pci_nic::probe_intel_nic() {
             serial_write_bytes(b"[NIC] Intel 82540EM BAR0 Armed | MAC: ");
             for i in 0..6 {

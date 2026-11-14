@@ -1,6 +1,3 @@
-// Copyright (c) 2026 zerokull1 (https://github.com)
-// Licensed under GPL-3.0. Unauthorized proprietary use is strictly prohibited.
-
 #![allow(dead_code)]
 
 use core::arch::asm;
@@ -12,6 +9,7 @@ pub enum L7Verdict {
     BlockedHttpSmuggling = 1,
     BlockedInvalidTlsRecord = 2,
     BlockedNullPayload = 3,
+    BlockedTlsRecordSplitting = 4,
 }
 
 const SIG_POST_SPACE: u64 = u64::from_le_bytes(*b"POST /  ");
@@ -19,6 +17,10 @@ const MASK_5_BYTES: u64   = 0x0000_00FF_FFFF_FFFF;
 const SIG_TE_CHUNKED: u64 = u64::from_le_bytes(*b"chunked\r");
 
 /// Аппаратная L7-инспекция на прямом x86_64 ассемблере (без ветвлений и обращений к стеку).
+/// Детектирует:
+/// - Невалидные TLS-заголовки (код 2)
+/// - TLS Record Splitting / Micro-Fragmentation: Handshake 0x16 с record_len < 40 байт (код 4)
+/// - HTTP Request Smuggling: POST / + chunked (код 1)
 #[inline(always)]
 pub unsafe fn inspect_l7_payload_asm(payload: *const u8, len: usize, dst_port: u16) -> L7Verdict { unsafe {
     if len < 16 || payload.is_null() {
@@ -28,25 +30,47 @@ pub unsafe fn inspect_l7_payload_asm(payload: *const u8, len: usize, dst_port: u
     let verdict_code: u64;
 
     if dst_port == 443 {
-        // Проверка заголовка TLS Record (байт 0: 0x16/0x17, байт 1: 0x03) без условных переходов
         asm!(
             "mov {q0}, qword ptr [{ptr}]",
             "movzx {b0:e}, {q0:l}",          // rec_type = q0 & 0xFF
             "mov {b1}, {q0}",
             "shr {b1}, 8",
             "movzx {b1:e}, {b1:l}",          // major_ver = (q0 >> 8) & 0xFF
+
+            // Извлекаем record_len (байты 3..5 в Big-Endian -> биты 24..40 в q0)
+            "mov {rlen}, {q0}",
+            "shr {rlen}, 24",
+            "rol {rlen:x}, 8",               // bswap16: перевод record_len из BE в LE
+
             "xor {res:e}, {res:e}",
             "mov {bad:e}, 2",                // L7Verdict::BlockedInvalidTlsRecord = 2
-            "cmp {b1:l}, 0x03",              // TLS major version == 3?
+            "mov {split:e}, 4",              // L7Verdict::BlockedTlsRecordSplitting = 4
+
+            // Проверка TLS Record Splitting: если rec_type == 0x16 (Handshake) И record_len < 40
+            "cmp {rlen:x}, 40",
+            "setb {is_small:l}",             // is_small = 1 если record_len < 40
+            "cmp {b0:l}, 0x16",
+            "sete {is_hs:l}",                // is_hs = 1 если Handshake (0x16)
+            "and {is_small:l}, {is_hs:l}",
+            "test {is_small:l}, {is_small:l}",
+            "cmovnz {res:e}, {split:e}",     // Если Handshake && record_len < 40 -> код 4
+
+            // Проверка базовой валидности TLS: major_ver == 0x03 и rec_type in {0x16, 0x17}
+            "cmp {b1:l}, 0x03",
             "cmovne {res:e}, {bad:e}",
-            "sub {b0:l}, 0x16",              // 0x16 (Handshake) или 0x17 (AppData) -> 0 или 1
+            "sub {b0:l}, 0x16",              // 0x16 -> 0, 0x17 -> 1
             "cmp {b0:l}, 1",
-            "cmova {res:e}, {bad:e}",        // Если > 1 (не 0x16 и не 0x17), ставим код 2
+            "cmova {res:e}, {bad:e}",
+
             ptr = in(reg) payload,
             q0 = out(reg) _,
             b0 = out(reg) _,
             b1 = out(reg) _,
+            rlen = out(reg) _,
             bad = out(reg) _,
+            split = out(reg) _,
+            is_small = out(reg) _,
+            is_hs = out(reg) _,
             res = out(reg) verdict_code,
             options(readonly, nostack, pure)
         );
@@ -74,7 +98,13 @@ pub unsafe fn inspect_l7_payload_asm(payload: *const u8, len: usize, dst_port: u
         );
     }
 
-    core::mem::transmute(verdict_code as u8)
+    match verdict_code as u8 {
+        0 => L7Verdict::CleanPass,
+        1 => L7Verdict::BlockedHttpSmuggling,
+        2 => L7Verdict::BlockedInvalidTlsRecord,
+        4 => L7Verdict::BlockedTlsRecordSplitting,
+        _ => L7Verdict::BlockedNullPayload,
+    }
 }}
 
 /// Бенчмарк ассемблерного L7-фильтра на TLS 1.3 ClientHello и атаке HTTP Smuggling
@@ -95,7 +125,11 @@ pub fn benchmark_l7_swar() -> (u64, u8) {
 }
 
 /// Безветвящийся x86_64 ASM инспектор QUIC / HTTP/3 (UDP 443)
-/// Проверяет Long Header (bit 7 = 1), валидность версии (v1/v2) и длину DCID/SCID без ветвлений.
+/// Проверяет:
+/// - Long Header (bit 7 = 1)
+/// - Валидность версии (QUIC v1, QUIC v2, Version Negotiation)
+/// - Длину DCID <= 20 байт (RFC 9000)
+/// - Защиту от QUIC Initial < 1200 байт (RFC 9000 Section 14.1 Anti-Amplification / DPI Evasion)
 /// Возвращает 0 (Clean QUIC) или 0x04 (BlockedQuicAnomaly).
 #[inline(always)]
 pub unsafe fn inspect_quic_l7_asm(payload_ptr: *const u8, len: usize) -> u64 { unsafe {
@@ -115,11 +149,13 @@ pub unsafe fn inspect_quic_l7_asm(payload_ptr: *const u8, len: usize) -> u64 { u
     let version_be = ((q0 >> 8) & 0xFFFF_FFFF) as u32;
     let version = u32::from_be(version_be);
     let dcid_len = ((q0 >> 40) & 0xFF) as u32;
+    let pkt_type = ((first_byte >> 4) & 0x03) as u32;
+    let pkt_len = len as u32;
 
     let mut verdict: u64 = 0;
 
     asm!(
-        // Проверка на известные версии: QUIC v1 (0x00000001), QUIC v2 (0x6b3343cf) или Version Negotiation (0x00000000)
+        // Проверка на известные версии: QUIC v1 (1), QUIC v2 (0x6b3343cf) или Version Negotiation (0)
         "cmp {ver:e}, 1",
         "sete {v1:l}",
         "cmp {ver:e}, 0x6b3343cf",
@@ -128,18 +164,35 @@ pub unsafe fn inspect_quic_l7_asm(payload_ptr: *const u8, len: usize) -> u64 { u
         "sete {vn:l}",
         "or {v1:l}, {v2:l}",
         "or {v1:l}, {vn:l}",
+
         // Если ни одна версия не совпала — ставим флаг аномалии 0x04 через cmovz
         "test {v1:l}, {v1:l}",
         "mov {tmp}, 4",
         "cmovz {verd}, {tmp}",
+
         // По RFC 9000 длина DCID в QUIC v1/v2 не может превышать 20 байт
         "cmp {dcid:e}, 20",
         "cmova {verd}, {tmp}",
+
+        // RFC 9000 Section 14.1: пакет QUIC Initial обязан быть >= 1200 байт
+        // Для v1 Initial == 0, для v2 (0x6b3343cf) Initial == 1 (то есть pkt_type == v2)
+        "cmp {ptype:e}, {v2:e}",
+        "sete {is_init:l}",
+        "cmp {plen:e}, 1200",
+        "setb {is_short_init:l}",
+        "and {is_init:l}, {is_short_init:l}",
+        "test {is_init:l}, {is_init:l}",
+        "cmovnz {verd}, {tmp}",
+
         ver = in(reg) version,
         dcid = in(reg) dcid_len,
+        ptype = in(reg) pkt_type,
+        plen = in(reg) pkt_len,
         v1 = out(reg) _,
         v2 = out(reg) _,
         vn = out(reg) _,
+        is_init = out(reg) _,
+        is_short_init = out(reg) _,
         tmp = out(reg) _,
         verd = inout(reg) verdict,
         options(pure, nomem, nostack)

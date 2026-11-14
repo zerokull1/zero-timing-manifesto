@@ -12,3 +12,7 @@ lto = true
 codegen-units = 1
 panic = "abort"
 strip = true
+
+[[bin]]
+name = "zero_os_monolith"
+path = "unikernel_ring0.rs"
