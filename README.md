@@ -113,3 +113,9 @@ UQBTjCDPiQIUl73F_1f-3ArppvjdfJ7mfONIyfDZl5d9z66Z
 * **Sub-Ring 0 Firmware (`Intel ME / AMD PSP`):** Cannot be disabled from a running OS or Unikernel; requires SPI-flash neutralization (`me_cleaner` / `HAP` bit) and hardware `SMRAM` locking (`D_LCK`).
 * **Proprietary Hardware Specs (`Closed GPUs / Wi-Fi`):** Bare-metal `Ring 0` drivers target open-register NICs (`Intel e1000 / ixgbe / E810`); proprietary GPUs remain isolated in user-space via non-temporal `ZERORING` (`vmovntdq`).
 * **Physical Cryogenic DDR Attacks (`Cold Boot`):** Desktop DDR modules retain charge after power loss unless keys are bound inside CPU silicon registers (`YMM15` TRESOR-mode in `zero-vault`) or protected by server **Intel TME / AMD SME**.
+
+## Latest Stress Benchmarks & Modules (2026-11-14)
+* **Hot L3/UMEM 4-Core Ceiling (500,000,000 frames, 2MB ring):** **42.36 Mpps** (**28.5 Gbps** at 64B min-size frames, **23.61 ns/frame**) on Intel Core i5-4590 (+37 °C).
+* **Cold RAM / 512MB TLB Thrashing (65,536 pages with `mprotect(PROT_NONE)` guard pages):** **34.92 Mpps** (**28.64 ns/frame**, **0 SIGSEGV**).
+* **Structural Guard-Page Fuzzing (2,500,645 mutated TCP/TLS/QUIC frames on unaligned pointers):** **0 out-of-bounds reads**, 0 data races across 4 threads.
+* **Standalone On-Demand XDP Module (`mutagen_wire_mod/`):** hot-swappable (`mutagen-ctl on/off`) L2/L3 wire mutagen with zero-overhead `XDP_PASS` bypass when inactive.
