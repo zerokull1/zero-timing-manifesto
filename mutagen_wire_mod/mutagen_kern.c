@@ -7,6 +7,7 @@
 #include <bpf/bpf_endian.h>
 
 struct mutagen_config {
+    __u64 magic; /* ZEROMANI: 0x5A45524F4D414E49ULL */
     __u32 active;
     __u32 redirect_ifindex;
     __u64 seed;

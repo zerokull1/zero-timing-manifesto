@@ -7,6 +7,7 @@
 #include <linux/bpf.h>
 
 struct mutagen_config {
+    uint64_t magic; /* ZEROMANI */
     uint32_t active;
     uint32_t pad;
     uint64_t seed;
@@ -40,6 +41,7 @@ int main(int argc, char **argv) {
     bpf_map_lookup(fd, &k, &cfg);
 
     if (strcmp(argv[1], "on") == 0) {
+        cfg.magic = 0x5A45524F4D414E49ULL;
         cfg.active = 1;
         cfg.seed = (argc >= 3) ? strtoull(argv[2], NULL, 16) : 0x9E3779B97F4A7C15ULL;
         bpf_map_update(fd, &k, &cfg);
